@@ -1,0 +1,21 @@
+{
+  "agent": "AnalyticsAgent",
+  "version": [
+    "v1",
+    "20260223161159",
+    "20260223161200",
+    "20260223161201"
+  ],
+  "focus": [
+    "keep quality gate green",
+    "preserve speed while maintaining quality",
+    "preserve speed while maintaining quality",
+    "preserve speed while maintaining quality"
+  ],
+  "tighten": [],
+  "relax": [
+    "score=0.94: keep flow lean, avoid over-processing",
+    "score=0.94: keep flow lean, avoid over-processing",
+    "score=0.94: keep flow lean, avoid over-processing"
+  ]
+}

@@ -1,0 +1,50 @@
+{
+  "ProductManagerAgent": {
+    "count": 3.0,
+    "avg": 1.0
+  },
+  "TechLeadAgent": {
+    "count": 3.0,
+    "avg": 1.0
+  },
+  "DesignAgent": {
+    "count": 3.0,
+    "avg": 1.0
+  },
+  "BackendAgent": {
+    "count": 3.0,
+    "avg": 1.0
+  },
+  "FrontendAgent": {
+    "count": 3.0,
+    "avg": 1.0
+  },
+  "QAAgent": {
+    "count": 3.0,
+    "avg": 0.99
+  },
+  "SecurityAgent": {
+    "count": 3.0,
+    "avg": 0.99
+  },
+  "DevOpsAgent": {
+    "count": 3.0,
+    "avg": 0.99
+  },
+  "AnalyticsAgent": {
+    "count": 3.0,
+    "avg": 0.94
+  },
+  "GrowthAgent": {
+    "count": 3.0,
+    "avg": 0.94
+  },
+  "SupportOpsAgent": {
+    "count": 3.0,
+    "avg": 0.94
+  },
+  "DecisionAgent": {
+    "count": 3.0,
+    "avg": 0.99
+  }
+}
