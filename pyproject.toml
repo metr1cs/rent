@@ -1,0 +1,8 @@
+[project]
+name = "ai-team-orchestrator"
+version = "0.1.0"
+description = "Multi-agent orchestration for premium venue product development"
+requires-python = ">=3.11"
+
+[tool.ruff]
+line-length = 100
