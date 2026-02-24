@@ -1040,7 +1040,16 @@ const ownerVenueSchema = z.object({
   areaSqm: z.number().int().positive(),
   pricePerHour: z.number().int().positive(),
   description: z.string().min(10),
-  amenities: z.array(z.string().min(2)),
+  amenities: z
+    .union([z.array(z.string().min(2)), z.string().min(1)])
+    .transform((value) =>
+      typeof value === "string"
+        ? value
+            .split(",")
+            .map((item) => item.trim())
+            .filter((item) => item.length >= 2)
+        : value
+    ),
   images: z.array(z.string().url()).min(3)
 });
 
@@ -1170,6 +1179,11 @@ app.post("/api/admin/billing/reminders/run", (req, res) => {
 app.post("/api/owner/venues", (req, res) => {
   const parsed = ownerVenueSchema.safeParse(req.body);
   if (!parsed.success) {
+    console.warn("owner venue payload invalid", parsed.error.issues.map((issue) => ({
+      path: issue.path.join("."),
+      message: issue.message,
+      code: issue.code
+    })));
     const imageIssue = parsed.error.issues.find((issue) => issue.path.join(".") === "images");
     if (imageIssue) {
       return res.status(400).json({ message: "Нужно добавить минимум 3 фото площадки" });

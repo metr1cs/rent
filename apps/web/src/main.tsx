@@ -1980,9 +1980,17 @@ function OwnerPage() {
         })
       });
 
-      const json = (await response.json().catch(() => ({}))) as { message?: string };
+      const contentType = response.headers.get("content-type") ?? "";
+      let messageFromServer = "";
+      if (contentType.includes("application/json")) {
+        const json = (await response.json().catch(() => ({}))) as { message?: string };
+        messageFromServer = json.message ?? "";
+      } else {
+        const raw = await response.text().catch(() => "");
+        messageFromServer = raw.slice(0, 180);
+      }
       if (!response.ok) {
-        setMessage(json.message ?? "Не удалось добавить площадку");
+        setMessage(messageFromServer || `Не удалось добавить площадку (HTTP ${response.status})`);
         return;
       }
 
