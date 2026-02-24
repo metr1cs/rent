@@ -543,7 +543,7 @@ function HomePage() {
             "@type": "Organization",
             name: "VmestoRu",
             url: SITE_URL,
-            email: "hello@vmestoru.ru",
+            email: "info@vmestoru.ru",
           },
         },
         {
@@ -579,7 +579,7 @@ function HomePage() {
             "@type": "Organization",
             name: "VmestoRu",
             url: SITE_URL,
-            email: "hello@vmestoru.ru",
+            email: "info@vmestoru.ru",
           },
         },
         {
@@ -2743,7 +2743,7 @@ function PrivacyPage() {
       <h3>8. Безопасность</h3>
       <p>Мы применяем организационные и технические меры защиты, включая ограничение доступа, журналирование административных действий и шифрование трафика (HTTPS).</p>
       <h3>9. Контакты оператора</h3>
-      <p>По вопросам персональных данных и конфиденциальности: +7 (995) 592-62-60, Telegram поддержки и форма обращения в разделе “Поддержка”.</p>
+      <p>По вопросам персональных данных и конфиденциальности: +7 (995) 592-62-60, info@vmestoru.ru, форма обращения в разделе “Поддержка”.</p>
     </section>
   );
 }
@@ -2850,6 +2850,7 @@ function Footer() {
         <div>
           <h4>Контакты</h4>
           <p>+7 (995) 592-62-60</p>
+          <p><a href="mailto:info@vmestoru.ru">info@vmestoru.ru</a></p>
           <button type="button" className="primary support-open-btn" onClick={() => setSupportModalOpen(true)}>
             Написать в поддержку
           </button>
