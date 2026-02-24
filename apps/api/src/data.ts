@@ -13,6 +13,7 @@ export type Venue = {
   address: string;
   category: string;
   capacity: number;
+  areaSqm: number;
   pricePerHour: number;
   description: string;
   amenities: string[];

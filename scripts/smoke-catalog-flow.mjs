@@ -61,6 +61,7 @@ async function main() {
         address: "Ухта, ул. Тестовая, 1",
         category: categoryName,
         capacity: 80,
+        areaSqm: 150,
         pricePerHour: 5000,
         description: "Smoke venue for catalog flow in empty data store",
         amenities: ["Wi-Fi", "Проектор", "Звук", "Парковка"],

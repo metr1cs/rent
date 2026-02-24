@@ -15,6 +15,7 @@ type Venue = {
   address: string;
   category: string;
   capacity: number;
+  areaSqm: number;
   pricePerHour: number;
   description: string;
   amenities: string[];
@@ -84,6 +85,7 @@ type SavedSearch = {
   region: string;
   category: string;
   capacity: string;
+  areaMin: string;
   date: string;
   sort: string;
   quickFilters: QuickFilters;
@@ -486,6 +488,7 @@ function HomePage() {
   const [region, setRegion] = useState("");
   const [category, setCategory] = useState("");
   const [capacity, setCapacity] = useState("");
+  const [areaMin, setAreaMin] = useState("");
   const [date, setDate] = useState<Date | undefined>(undefined);
   const [sort, setSort] = useState("recommended");
   const [quickFilters, setQuickFilters] = useState<QuickFilters>({
@@ -662,6 +665,7 @@ function HomePage() {
     if (region) params.set("region", region);
     if (category) params.set("category", category);
     if (capacity) params.set("capacity", capacity);
+    if (areaMin) params.set("areaMin", areaMin);
     if (date) params.set("date", formatDateValue(date));
     params.set("sort", sort);
 
@@ -690,6 +694,7 @@ function HomePage() {
     setRegion("");
     setCategory("");
     setCapacity("");
+    setAreaMin("");
     setDate(undefined);
     setSort("recommended");
     setQuickFilters({ parking: false, stage: false, late: false, instant: false });
@@ -708,11 +713,12 @@ function HomePage() {
   function saveCurrentSearch(): void {
     const next: SavedSearch = {
       id: `${Date.now()}`,
-      label: [category || "Все категории", region || "Все регионы", capacity ? `${capacity} гостей` : ""].filter(Boolean).join(" · "),
+      label: [category || "Все категории", region || "Все регионы", capacity ? `${capacity} гостей` : "", areaMin ? `от ${areaMin} м2` : ""].filter(Boolean).join(" · "),
       query,
       region,
       category,
       capacity,
+      areaMin,
       date: date ? formatDateValue(date) : "",
       sort,
       quickFilters
@@ -727,6 +733,7 @@ function HomePage() {
     setRegion(item.region);
     setCategory(item.category);
     setCapacity(item.capacity);
+    setAreaMin(item.areaMin ?? "");
     setDate(item.date ? new Date(item.date) : undefined);
     setSort(item.sort);
     setQuickFilters(item.quickFilters);
@@ -736,6 +743,7 @@ function HomePage() {
     if (item.region) params.set("region", item.region);
     if (item.category) params.set("category", item.category);
     if (item.capacity) params.set("capacity", item.capacity);
+    if (item.areaMin) params.set("areaMin", item.areaMin);
     if (item.date) params.set("date", item.date);
     params.set("sort", item.sort);
     if (item.quickFilters.parking) params.set("parking", "true");
@@ -854,6 +862,10 @@ function HomePage() {
             </div>
           </label>
           <label className="filter-item">
+            <span>Площадь (м2)</span>
+            <input type="number" min="1" placeholder="Например, 120" value={areaMin} onChange={(e) => setAreaMin(e.target.value)} />
+          </label>
+          <label className="filter-item">
             <span>Сортировка</span>
             <select value={sort} onChange={(e) => setSort(e.target.value)}>
               <option value="recommended">Рекомендованные</option>
@@ -897,6 +909,7 @@ function HomePage() {
                 <div className="card-body">
                   <h3>{venue.title}</h3>
                   <p><span className="category-pill">{venue.category}</span> · {venue.region}</p>
+                  <p>{venue.areaSqm} м2 · {venue.capacity} гостей</p>
                   <p>от {formatRub(venue.pricePerHour)} ₽/час</p>
                   <span className="rating-corner">★ {venue.rating}</span>
                 </div>
@@ -918,7 +931,7 @@ function HomePage() {
                     {venue.instantBooking ? <span className="instant">Instant</span> : null}
                   </div>
                   <p><span className="category-pill">{venue.category}</span> · {venue.region}</p>
-                  <p>{venue.capacity} гостей · {venue.metroMinutes} мин</p>
+                  <p>{venue.areaSqm} м2 · {venue.capacity} гостей · {venue.metroMinutes} мин</p>
                   <p className="price">от {formatRub(venue.pricePerHour)} ₽/час</p>
                   <span className="rating-corner">★ {venue.rating}</span>
                 </div>
@@ -968,6 +981,7 @@ function HomePage() {
                 <div className="card-body">
                   <h3>{venue.title}</h3>
                   <p><span className="category-pill">{venue.category}</span> · {venue.region}</p>
+                  <p>{venue.areaSqm} м2 · {venue.capacity} гостей</p>
                   <p className="price">от {formatRub(venue.pricePerHour)} ₽/час</p>
                   <span className="rating-corner">★ {venue.rating}</span>
                 </div>
@@ -1342,6 +1356,7 @@ function CategoryPage() {
   const [query, setQuery] = useState(searchParams.get("q") ?? "");
   const [region, setRegion] = useState(citySlug ? "" : (searchParams.get("region") ?? ""));
   const [capacity, setCapacity] = useState(searchParams.get("capacity") ?? "");
+  const [areaMin, setAreaMin] = useState(searchParams.get("areaMin") ?? "");
   const [sort, setSort] = useState(searchParams.get("sort") || "recommended");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -1350,6 +1365,7 @@ function CategoryPage() {
     setQuery(searchParams.get("q") ?? "");
     setRegion(citySlug ? "" : (searchParams.get("region") ?? ""));
     setCapacity(searchParams.get("capacity") ?? "");
+    setAreaMin(searchParams.get("areaMin") ?? "");
     setSort(searchParams.get("sort") || "recommended");
     void loadCategory();
   }, [slug, citySlug, searchParams]);
@@ -1357,7 +1373,7 @@ function CategoryPage() {
   useEffect(() => {
     if (!slug || !categoryName) return;
     const basePath = citySlug ? `/category/${slug}/${citySlug}` : `/category/${slug}`;
-    const hasSeoFilters = Boolean(query || capacity || sort !== "recommended" || (!citySlug && region));
+    const hasSeoFilters = Boolean(query || capacity || areaMin || sort !== "recommended" || (!citySlug && region));
     const normalizedRegion = citySlug ? lockedRegion : region;
     const titleRegionSuffix = normalizedRegion ? ` в ${normalizedRegion}` : "";
     const descriptionRegionSuffix = normalizedRegion ? ` в городе ${normalizedRegion}` : "";
@@ -1394,7 +1410,7 @@ function CategoryPage() {
         },
       ],
     });
-  }, [categoryName, slug, citySlug, lockedRegion, query, capacity, sort, region]);
+  }, [categoryName, slug, citySlug, lockedRegion, query, capacity, areaMin, sort, region]);
 
   async function loadCategory(): Promise<void> {
     if (!slug) return;
@@ -1428,6 +1444,7 @@ function CategoryPage() {
       const effectiveRegion = citySlug ? resolvedRegion : region;
       if (effectiveRegion) params.set("region", effectiveRegion);
       if (capacity) params.set("capacity", capacity);
+      if (areaMin) params.set("areaMin", areaMin);
       if (sort) params.set("sort", sort);
 
       const venuesRes = await fetch(`${API}/api/venues?${params.toString()}`);
@@ -1452,12 +1469,14 @@ function CategoryPage() {
     if (query) params.set("q", query);
     if (!citySlug && region) params.set("region", region);
     if (capacity) params.set("capacity", capacity);
+    if (areaMin) params.set("areaMin", areaMin);
     if (sort) params.set("sort", sort);
     void trackEvent("category_filter_apply", {
       category: categoryName || slug || "",
       region: citySlug ? (lockedRegion || "all") : (region || "all"),
       hasQuery: Boolean(query),
       hasCapacity: Boolean(capacity),
+      hasAreaMin: Boolean(areaMin),
       sort,
     });
     setSearchParams(params);
@@ -1467,6 +1486,7 @@ function CategoryPage() {
     setQuery("");
     setRegion(citySlug ? lockedRegion : "");
     setCapacity("");
+    setAreaMin("");
     setSort("recommended");
     setSearchParams(new URLSearchParams({ sort: "recommended" }));
   }
@@ -1508,6 +1528,10 @@ function CategoryPage() {
           <input type="number" min="1" placeholder="Например, 50" value={capacity} onChange={(e) => setCapacity(e.target.value)} />
         </label>
         <label className="filter-item">
+          <span>Площадь (м2)</span>
+          <input type="number" min="1" placeholder="Например, 120" value={areaMin} onChange={(e) => setAreaMin(e.target.value)} />
+        </label>
+        <label className="filter-item">
           <span>Сортировка</span>
           <select value={sort} onChange={(e) => setSort(e.target.value)}>
             <option value="recommended">Рекомендованные</option>
@@ -1540,7 +1564,7 @@ function CategoryPage() {
               <div className="card-body">
                 <h3>{venue.title}</h3>
                 <p><span className="category-pill">{venue.category}</span> · {venue.region}</p>
-                <p>{venue.capacity} гостей · {venue.metroMinutes} мин</p>
+                <p>{venue.areaSqm} м2 · {venue.capacity} гостей · {venue.metroMinutes} мин</p>
                 <p className="price">от {formatRub(venue.pricePerHour)} ₽/час</p>
                 <span className="rating-corner">★ {venue.rating}</span>
               </div>
@@ -1570,7 +1594,7 @@ function VenuePage() {
     if (!venue || !id) return;
     applySeo({
       title: `${venue.title} — аренда площадки | VmestoRu`,
-      description: `${venue.category} в ${venue.region}. Рейтинг ${venue.rating}, вместимость до ${venue.capacity} гостей, от ${formatRub(venue.pricePerHour)} ₽/час.`,
+      description: `${venue.category} в ${venue.region}. Площадь ${venue.areaSqm} м2, вместимость до ${venue.capacity} гостей, от ${formatRub(venue.pricePerHour)} ₽/час.`,
       path: `/venue/${id}`,
       type: "article",
       image: venue.images[0],
@@ -1717,6 +1741,7 @@ function VenuePage() {
         <div><strong>Категория</strong><p>{venue.category}</p></div>
         <div><strong>Адрес</strong><p>{venue.address}</p></div>
         <div><strong>Вместимость</strong><p>до {venue.capacity} гостей</p></div>
+        <div><strong>Площадь</strong><p>{venue.areaSqm} м2</p></div>
         <div><strong>От метро</strong><p>{venue.metroMinutes} минут</p></div>
         <div><strong>Рейтинг</strong><p>★ {venue.rating} ({venue.reviewsCount})</p></div>
         <div><strong>Отмена</strong><p>{venue.cancellationPolicy}</p></div>
@@ -1766,6 +1791,7 @@ function VenuePage() {
                   <div className="card-body">
                     <h3>{item.title}</h3>
                     <p><span className="category-pill">{item.category}</span> · {item.region}</p>
+                    <p>{item.areaSqm} м2 · {item.capacity} гостей</p>
                     <p className="price">от {formatRub(item.pricePerHour)} ₽/час</p>
                     <span className="rating-corner">★ {item.rating}</span>
                   </div>
@@ -1825,6 +1851,7 @@ function OwnerPage() {
     address: "",
     category: "Лофт",
     capacity: "50",
+    areaSqm: "120",
     pricePerHour: "5000",
     description: "",
     amenities: "Wi-Fi, Проектор, Звук",
@@ -1919,6 +1946,7 @@ function OwnerPage() {
         address: venueForm.address,
         category: venueForm.category,
         capacity: Number(venueForm.capacity),
+        areaSqm: Number(venueForm.areaSqm),
         pricePerHour: Number(venueForm.pricePerHour),
         description: venueForm.description,
         amenities: venueForm.amenities.split(",").map((item) => item.trim()).filter(Boolean),
@@ -2149,6 +2177,10 @@ function OwnerPage() {
                 <input type="number" min="1" value={venueForm.capacity} onChange={(e) => setVenueForm({ ...venueForm, capacity: e.target.value })} />
               </label>
               <label className="filter-item">
+                <span>Площадь (м2)</span>
+                <input type="number" min="1" value={venueForm.areaSqm} onChange={(e) => setVenueForm({ ...venueForm, areaSqm: e.target.value })} />
+              </label>
+              <label className="filter-item">
                 <span>Цена за час (₽)</span>
                 <input type="number" min="1" value={venueForm.pricePerHour} onChange={(e) => setVenueForm({ ...venueForm, pricePerHour: e.target.value })} />
               </label>
@@ -2202,6 +2234,7 @@ function OwnerPage() {
                   <div className="card-body">
                     <h3>{venue.title}</h3>
                     <p><span className="category-pill">{venue.category}</span></p>
+                    <p>{venue.areaSqm} м2 · {venue.capacity} гостей</p>
                     <p>{venue.address}</p>
                     <span className="rating-corner">★ {venue.rating}</span>
                     <button type="button" className="ghost-btn owner-delete-btn" onClick={() => void deleteVenue(venue.id)}>Удалить</button>

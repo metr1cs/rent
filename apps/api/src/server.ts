@@ -87,6 +87,20 @@ app.use((req, res, next) => {
 });
 initDataStore();
 
+function normalizeVenueArea(): void {
+  let updated = false;
+  venues.forEach((venue) => {
+    const raw = (venue as { areaSqm?: unknown }).areaSqm;
+    if (typeof raw === "number" && Number.isFinite(raw) && raw > 0) return;
+    const fallback = Math.max(10, Math.round((venue.capacity || 20) * 1.5));
+    (venue as { areaSqm: number }).areaSqm = fallback;
+    updated = true;
+  });
+  if (updated) persistStateSync();
+}
+
+normalizeVenueArea();
+
 function requireAdmin(req: Request, res: Response): string | null {
   const sessionToken = String(req.headers["x-admin-session"] ?? "");
   if (sessionToken) {
@@ -439,6 +453,7 @@ const venueQuerySchema = z.object({
   region: z.string().optional(),
   date: z.string().optional(),
   capacity: z.coerce.number().int().positive().optional(),
+  areaMin: z.coerce.number().int().positive().optional(),
   sort: z.enum(["recommended", "price_asc", "price_desc", "rating_desc"]).optional(),
   parking: z.coerce.boolean().optional(),
   stage: z.coerce.boolean().optional(),
@@ -452,7 +467,7 @@ app.get("/api/venues", (req, res) => {
     return res.status(400).json({ message: "Invalid query" });
   }
 
-  const { q, category, region, date, capacity, sort, parking, stage, late, instant } = parsed.data;
+  const { q, category, region, date, capacity, areaMin, sort, parking, stage, late, instant } = parsed.data;
 
   const filtered = venues.filter((venue) => {
     const qPass = q
@@ -462,12 +477,13 @@ app.get("/api/venues", (req, res) => {
     const regionPass = region ? venue.region === region : true;
     const datePass = date ? venue.nextAvailableDates.includes(date) : true;
     const capacityPass = capacity ? venue.capacity >= capacity : true;
+    const areaPass = areaMin ? venue.areaSqm >= areaMin : true;
     const parkingPass = parking ? venue.amenities.includes("Парковка") : true;
     const stagePass = stage ? venue.amenities.includes("Сцена") : true;
     const latePass = late ? venue.cancellationPolicy.toLowerCase().includes("72") : true;
     const instantPass = instant ? venue.instantBooking : true;
 
-    return qPass && categoryPass && regionPass && datePass && capacityPass && parkingPass && stagePass && latePass && instantPass;
+    return qPass && categoryPass && regionPass && datePass && capacityPass && areaPass && parkingPass && stagePass && latePass && instantPass;
   });
 
   const sorted = [...filtered];
@@ -1013,6 +1029,7 @@ const ownerVenueSchema = z.object({
   address: z.string().min(2),
   category: z.string().min(2),
   capacity: z.number().int().positive(),
+  areaSqm: z.number().int().positive(),
   pricePerHour: z.number().int().positive(),
   description: z.string().min(10),
   amenities: z.array(z.string().min(2)),
@@ -1041,6 +1058,7 @@ app.get("/api/owner/dashboard", (req, res) => {
       venue.amenities.length >= 4,
       venue.pricePerHour > 0,
       venue.capacity > 0,
+      venue.areaSqm > 0,
     ];
     const score = Math.round((checks.filter(Boolean).length / checks.length) * 100);
     return {
@@ -1206,19 +1224,21 @@ app.delete("/api/owner/venues/:id", (req, res) => {
 
 const aiSearchSchema = z.object({ query: z.string().min(3) });
 
-function aiExtractFilters(query: string): { category?: string; region?: string; capacity?: number; priceMax?: number } {
+function aiExtractFilters(query: string): { category?: string; region?: string; capacity?: number; areaMin?: number; priceMax?: number } {
   const lowered = query.toLowerCase();
 
   const category = categories.find((item) => lowered.includes(item.name.toLowerCase().split(" ")[0]))?.name;
   const region = ["москва", "санкт-петербург", "казань", "екатеринбург", "новосибирск"].find((city) => lowered.includes(city));
 
   const guestsMatch = lowered.match(/(\d{2,3})\s*(гостей|человек)/);
+  const areaMatch = lowered.match(/(\d{2,4})\s*(м2|м²|кв\.?\s*м|квадрат)/);
   const budgetMatch = lowered.match(/до\s*(\d{3,6})/);
 
   return {
     category,
     region: region ? region[0].toUpperCase() + region.slice(1) : undefined,
     capacity: guestsMatch ? Number(guestsMatch[1]) : undefined,
+    areaMin: areaMatch ? Number(areaMatch[1]) : undefined,
     priceMax: budgetMatch ? Number(budgetMatch[1]) : undefined,
   };
 }
@@ -1233,8 +1253,9 @@ app.post("/api/ai/search", (req, res) => {
     const categoryPass = filters.category ? item.category === filters.category : true;
     const regionPass = filters.region ? item.region === filters.region : true;
     const capacityPass = filters.capacity ? item.capacity >= filters.capacity : true;
+    const areaPass = filters.areaMin ? item.areaSqm >= filters.areaMin : true;
     const pricePass = filters.priceMax ? item.pricePerHour <= filters.priceMax : true;
-    return categoryPass && regionPass && capacityPass && pricePass;
+    return categoryPass && regionPass && capacityPass && areaPass && pricePass;
   }).slice(0, 20);
 
   return res.json({

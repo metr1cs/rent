@@ -49,6 +49,7 @@ async function main() {
         address: "Ухта, ул. Тестовая, 2",
         category: "Лофт",
         capacity: 50,
+        areaSqm: 110,
         pricePerHour: 4500,
         description: "Smoke venue for trust flow in empty data store",
         amenities: ["Wi-Fi", "Проектор", "Звук", "Парковка"],
