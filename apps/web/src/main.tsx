@@ -449,7 +449,6 @@ function HeroOrbit() {
 
 function HomePage() {
   const navigate = useNavigate();
-  const [featured, setFeatured] = useState<Array<Category & { venues: Venue[] }>>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [allVenues, setAllVenues] = useState<Venue[]>([]);
 
@@ -472,16 +471,6 @@ function HomePage() {
   const [aiMessage, setAiMessage] = useState("");
 
   const regions = useMemo(() => [...new Set(allVenues.map((item) => item.region))], [allVenues]);
-  const homeCategoryCards = useMemo(
-    () =>
-      categories.map((item) => ({
-        id: item.id,
-        name: item.name,
-        image: categoryWebpArt(item.name),
-        count: allVenues.filter((venue) => venue.category === item.name).length,
-      })),
-    [categories, allVenues]
-  );
 
   useEffect(() => {
     void bootstrap();
@@ -562,20 +551,6 @@ function HomePage() {
           },
         },
         {
-          id: "home-categories",
-          payload: {
-            "@context": "https://schema.org",
-            "@type": "ItemList",
-            name: "Категории площадок VmestoRu",
-            itemListElement: categories.slice(0, 12).map((item, index) => ({
-              "@type": "ListItem",
-              position: index + 1,
-              name: item.name,
-              url: `${SITE_URL}/category/${categoryToSlug(item.name)}`,
-            })),
-          },
-        },
-        {
           id: "home-faq",
           payload: {
             "@context": "https://schema.org",
@@ -602,7 +577,7 @@ function HomePage() {
                 name: "Как связаться с поддержкой?",
                 acceptedAnswer: {
                   "@type": "Answer",
-                  text: "Используйте форму поддержки на сайте: обращение сразу отправляется в Telegram-команду поддержки.",
+                  text: "Используйте кнопку «Написать в поддержку» внизу сайта. Откроется модальное окно с формой обращения.",
                 },
               },
             ],
@@ -613,13 +588,11 @@ function HomePage() {
   }, [categories]);
 
   async function bootstrap(): Promise<void> {
-    const [featuredRes, categoriesRes, venuesRes] = await Promise.all([
-      fetch(`${API}/api/home/featured-categories`),
+    const [categoriesRes, venuesRes] = await Promise.all([
       fetch(`${API}/api/categories`),
       fetch(`${API}/api/venues`),
     ]);
 
-    if (featuredRes.ok) setFeatured((await featuredRes.json()) as Array<Category & { venues: Venue[] }>);
     if (categoriesRes.ok) setCategories((await categoriesRes.json()) as Category[]);
     if (venuesRes.ok) setAllVenues((await venuesRes.json()) as Venue[]);
   }
@@ -905,46 +878,6 @@ function HomePage() {
         ) : null}
       </section>
 
-      <section className="section glass reveal-on-scroll">
-        <div className="row-between">
-          <h2>Категории площадок</h2>
-          <span>{homeCategoryCards.length} направлений</span>
-        </div>
-        <div className="category-grid">
-          {homeCategoryCards.map((item) => (
-            <Link key={item.id} className="category-tile" to={`/category/${categoryToSlug(item.name)}`}>
-              <img src={item.image} alt={item.name} loading="lazy" />
-              <div className="category-tile-body">
-                <h3>{item.name}</h3>
-                <p>{item.count} вариантов</p>
-              </div>
-            </Link>
-          ))}
-        </div>
-      </section>
-
-      {featured.map((group) => (
-        <section key={group.id} className="section glass reveal-on-scroll">
-          <div className="row-between">
-            <h2><Link className="category-head-link" to={`/category/${categoryToSlug(group.name)}`}>{group.name}</Link></h2>
-            <span>{group.venues.length} вариантов</span>
-          </div>
-          <div className="cards-grid">
-            {group.venues.slice(0, 8).map((venue) => (
-              <article key={venue.id} className="venue-card" onClick={() => navigate(`/venue/${venue.id}`)}>
-                <img src={venue.images[0]} alt={venue.title} loading="lazy" />
-                <div className="card-body">
-                  <h3>{venue.title}</h3>
-                  <p><span className="category-pill">{venue.category}</span> · {venue.region}</p>
-                  <p className="price">от {formatRub(venue.pricePerHour)} ₽/час</p>
-                  <span className="rating-corner">★ {venue.rating}</span>
-                </div>
-              </article>
-            ))}
-          </div>
-        </section>
-      ))}
-
       <section id="how-it-works" className="section glass reveal-on-scroll">
         <h2>Как это работает</h2>
         <div className="hero-metrics">
@@ -960,22 +893,6 @@ function HomePage() {
             <strong>03</strong>
             <span>Оставляете заявку и связываетесь с арендодателем</span>
           </article>
-        </div>
-      </section>
-
-      <section className="section glass reveal-on-scroll">
-        <h2>Категории и города</h2>
-        <div className="seo-links">
-          {categories.slice(0, 14).map((item) => (
-            <Link key={item.id} to={`/category/${categoryToSlug(item.name)}`} className="seo-link-pill">
-              {item.name}
-            </Link>
-          ))}
-        </div>
-        <div className="seo-links muted-links">
-          {regions.map((item) => (
-            <span key={item} className="seo-link-pill muted-city">{item}</span>
-          ))}
         </div>
       </section>
 
@@ -1122,6 +1039,21 @@ function CatalogPage() {
           </Link>
         ))}
       </div>
+      <section className="section glass reveal-on-scroll">
+        <h2>Категории и города</h2>
+        <div className="seo-links">
+          {categoryCards.slice(0, 20).map((item) => (
+            <Link key={item.id} to={`/category/${categoryToSlug(item.name)}`} className="seo-link-pill">
+              {item.name}
+            </Link>
+          ))}
+        </div>
+        <div className="seo-links muted-links">
+          {regions.map((item) => (
+            <span key={item} className="seo-link-pill muted-city">{item}</span>
+          ))}
+        </div>
+      </section>
       {loading ? <p className="muted">Загрузка категорий...</p> : null}
       {!loading && error ? <p className="error-note">{error}</p> : null}
       {!loading && !error && categoryCards.length === 0 ? (
