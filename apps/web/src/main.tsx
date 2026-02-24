@@ -1,4 +1,4 @@
-import React, { FormEvent, useEffect, useMemo, useState } from "react";
+import React, { type ChangeEvent, FormEvent, useEffect, useMemo, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { BrowserRouter, Link, NavLink, Route, Routes, useLocation, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { DayPicker } from "react-day-picker";
@@ -338,6 +338,15 @@ async function reportFrontendError(message: string, source = "window"): Promise<
 
 function formatRub(value: number): string {
   return new Intl.NumberFormat("ru-RU").format(value);
+}
+
+function fileToDataUrl(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result ?? ""));
+    reader.onerror = () => reject(new Error("read_failed"));
+    reader.readAsDataURL(file);
+  });
 }
 
 function formatDateValue(value: Date | undefined): string {
@@ -1821,7 +1830,6 @@ function OwnerPage() {
     amenities: "Wi-Fi, Проектор, Звук",
     images: [] as string[]
   });
-  const [photoUrlInput, setPhotoUrlInput] = useState("");
 
   async function auth(event: FormEvent): Promise<void> {
     event.preventDefault();
@@ -1932,33 +1940,55 @@ function OwnerPage() {
       description: "",
       images: []
     });
-    setPhotoUrlInput("");
     await loadOwnerVenues(owner.id);
     await loadOwnerDashboard(owner.id);
   }
 
-  function addPhotoToVenue(): void {
-    const normalized = photoUrlInput.trim();
-    if (!normalized) return;
-    try {
-      const parsed = new URL(normalized);
-      if (!["http:", "https:"].includes(parsed.protocol)) {
-        setMessage("Ссылка на фото должна начинаться с http или https");
-        return;
+  async function addPhotosFromDevice(event: ChangeEvent<HTMLInputElement>): Promise<void> {
+    const files = event.target.files ? Array.from(event.target.files) : [];
+    event.target.value = "";
+    if (files.length === 0) return;
+
+    const maxPhotos = 20;
+    const maxFileSizeBytes = 8 * 1024 * 1024;
+    const availableSlots = Math.max(0, maxPhotos - venueForm.images.length);
+    if (availableSlots <= 0) {
+      setMessage(`Можно добавить максимум ${maxPhotos} фотографий`);
+      return;
+    }
+
+    const selected = files.slice(0, availableSlots);
+    const loaded: string[] = [];
+    let rejectedCount = 0;
+
+    for (const file of selected) {
+      if (!file.type.startsWith("image/")) {
+        rejectedCount += 1;
+        continue;
       }
-    } catch {
-      setMessage("Некорректная ссылка на фото");
-      return;
+      if (file.size > maxFileSizeBytes) {
+        rejectedCount += 1;
+        continue;
+      }
+      try {
+        const dataUrl = await fileToDataUrl(file);
+        if (!dataUrl || venueForm.images.includes(dataUrl) || loaded.includes(dataUrl)) continue;
+        loaded.push(dataUrl);
+      } catch {
+        rejectedCount += 1;
+      }
     }
 
-    if (venueForm.images.includes(normalized)) {
-      setMessage("Это фото уже добавлено");
-      return;
+    if (loaded.length > 0) {
+      setVenueForm((prev) => ({ ...prev, images: [...prev.images, ...loaded] }));
+      setMessage(
+        rejectedCount > 0
+          ? `Добавлено фото: ${loaded.length}. Пропущено: ${rejectedCount} (формат/размер).`
+          : `Добавлено фото: ${loaded.length}.`
+      );
+    } else {
+      setMessage("Не удалось добавить фото. Проверьте формат изображения и размер (до 8 МБ).");
     }
-
-    setVenueForm((prev) => ({ ...prev, images: [...prev.images, normalized] }));
-    setPhotoUrlInput("");
-    setMessage("");
   }
 
   function removePhotoFromVenue(index: number): void {
@@ -2137,16 +2167,16 @@ function OwnerPage() {
             </label>
             <div className="photo-builder">
               <label className="filter-item">
-                <span>Добавить фотографию по ссылке</span>
+                <span>Загрузить фотографии (JPG/PNG/WEBP, до 8 МБ)</span>
                 <input
-                  value={photoUrlInput}
-                  onChange={(e) => setPhotoUrlInput(e.target.value)}
-                  placeholder="https://..."
+                  type="file"
+                  accept="image/*"
+                  multiple
+                  onChange={(e) => void addPhotosFromDevice(e)}
                 />
               </label>
-              <button type="button" className="chip" onClick={addPhotoToVenue}>Добавить фото</button>
             </div>
-            <p className="muted">Фото добавлено: {venueForm.images.length} (минимум 3). Первое фото будет обложкой.</p>
+            <p className="muted">Фото добавлено: {venueForm.images.length} (минимум 3, максимум 20). Первое фото будет обложкой.</p>
             <div className="photo-preview-grid">
               {venueForm.images.map((image, index) => (
                 <article key={`${image}-${index}`} className="photo-preview-card">
