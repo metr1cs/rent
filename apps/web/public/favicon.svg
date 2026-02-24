@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="VmestoRu">
+  <defs>
+    <linearGradient id="g" x1="0%" y1="100%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#0f4cff"/>
+      <stop offset="100%" stop-color="#10dfc6"/>
+    </linearGradient>
+    <filter id="glow" x="-40%" y="-40%" width="180%" height="180%">
+      <feGaussianBlur stdDeviation="18" result="blur"/>
+      <feColorMatrix in="blur" type="matrix" values="1 0 0 0 0  0 1 0 0 0.6  0 0 1 0 0.8  0 0 0 0.8 0"/>
+    </filter>
+  </defs>
+  <rect x="54" y="54" width="404" height="404" rx="96" fill="url(#g)"/>
+  <rect x="54" y="54" width="404" height="404" rx="96" fill="none" stroke="#0754bf" stroke-width="4"/>
+  <g filter="url(#glow)">
+    <rect x="90" y="90" width="332" height="332" rx="82" fill="none" opacity="0.32" stroke="#7bf2e9" stroke-width="8"/>
+  </g>
+  <text x="256" y="318" text-anchor="middle" font-family="Montserrat, Arial, sans-serif" font-size="180" font-weight="800" letter-spacing="-8" fill="#0a56c7" stroke="#0a56c7" stroke-width="4">VR</text>
+</svg>
