@@ -528,6 +528,9 @@ const supportRequestSchema = z.object({
 app.post("/api/support/requests", (req, res) => {
   const parsed = supportRequestSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ message: "Invalid support payload" });
+  if (!telegramBotToken || !supportTelegramChatId.trim()) {
+    return res.status(503).json({ message: "Канал поддержки временно недоступен. Свяжитесь по номеру +7 (995) 592-62-60." });
+  }
 
   const createdAt = new Date().toISOString();
   void sendTelegramNotification(
