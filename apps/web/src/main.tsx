@@ -1,6 +1,6 @@
 import React, { type ChangeEvent, FormEvent, useEffect, useMemo, useState } from "react";
 import { createRoot } from "react-dom/client";
-import { BrowserRouter, Link, NavLink, Route, Routes, useLocation, useNavigate, useParams, useSearchParams } from "react-router-dom";
+import { BrowserRouter, Link, Route, Routes, useLocation, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { DayPicker } from "react-day-picker";
 import "react-day-picker/style.css";
 import "./styles.css";
@@ -128,6 +128,7 @@ type OwnerDashboard = {
 };
 
 type Theme = "light" | "dark";
+type UiLanguage = "ru" | "en" | "zh" | "es" | "fr" | "de" | "ar" | "hi" | "pt";
 
 const envApiBase = (import.meta.env.VITE_API_URL as string | undefined)?.trim();
 const inferredApiBase =
@@ -367,6 +368,21 @@ function useTheme(): [Theme, () => void] {
   return [theme, () => setTheme((prev) => (prev === "light" ? "dark" : "light"))];
 }
 
+function useLanguage(): [UiLanguage, (next: UiLanguage) => void] {
+  const [language, setLanguage] = useState<UiLanguage>(() => {
+    const saved = localStorage.getItem("vmestoru-language");
+    const allowed: UiLanguage[] = ["ru", "en", "zh", "es", "fr", "de", "ar", "hi", "pt"];
+    return allowed.includes(saved as UiLanguage) ? (saved as UiLanguage) : "ru";
+  });
+
+  useEffect(() => {
+    localStorage.setItem("vmestoru-language", language);
+    document.documentElement.lang = language;
+  }, [language]);
+
+  return [language, (next) => setLanguage(next)];
+}
+
 function DateField({ value, onChange }: { value: Date | undefined; onChange: (date: Date | undefined) => void }) {
   const [opened, setOpened] = useState(false);
 
@@ -409,7 +425,17 @@ function Breadcrumbs({ items }: { items: Array<{ label: string; to?: string }> }
   );
 }
 
-function Header({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: () => void }) {
+function Header({
+  theme,
+  onToggleTheme,
+  language,
+  onLanguageChange
+}: {
+  theme: Theme;
+  onToggleTheme: () => void;
+  language: UiLanguage;
+  onLanguageChange: (next: UiLanguage) => void;
+}) {
   const location = useLocation();
   const isOwnerRoute = location.pathname.startsWith("/owner");
   const [menuOpen, setMenuOpen] = useState(false);
@@ -443,14 +469,24 @@ function Header({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: () => v
       </div>
 
       <div className={menuOpen ? "header-menu open" : "header-menu"}>
-        <nav className="nav">
-          <NavLink to="/catalog">Каталог</NavLink>
-          <a href="/#how-it-works">Как это работает</a>
-        </nav>
         <div className="header-actions">
           <Link to={isOwnerRoute ? "/" : "/owner"} className="become-owner">
             {isOwnerRoute ? "Назад в каталог" : "Для арендодателей"}
           </Link>
+          <label className="filter-item header-language">
+            <span>Язык</span>
+            <select value={language} onChange={(e) => onLanguageChange(e.target.value as UiLanguage)}>
+              <option value="ru">Русский</option>
+              <option value="en">English</option>
+              <option value="zh">中文</option>
+              <option value="es">Español</option>
+              <option value="fr">Français</option>
+              <option value="de">Deutsch</option>
+              <option value="ar">العربية</option>
+              <option value="hi">हिन्दी</option>
+              <option value="pt">Português</option>
+            </select>
+          </label>
           <button
             type="button"
             className={theme === "dark" ? "theme-switch is-dark" : "theme-switch"}
@@ -1164,6 +1200,18 @@ function CatalogPage() {
       .filter((item) => item.count > 0);
   }, [categories, venues, query, region]);
 
+  const visibleVenues = useMemo(() => {
+    return venues
+      .filter((item) => (region ? item.region === region : true))
+      .filter((item) => {
+        if (!query) return true;
+        const normalized = query.trim().toLowerCase();
+        return `${item.title} ${item.category} ${item.description}`.toLowerCase().includes(normalized);
+      })
+      .sort((a, b) => b.rating - a.rating)
+      .slice(0, 48);
+  }, [venues, region, query]);
+
   return (
     <section className="section glass reveal-on-scroll">
       <Breadcrumbs items={[{ label: "Главная", to: "/" }, { label: "Каталог" }]} />
@@ -1201,6 +1249,27 @@ function CatalogPage() {
           </Link>
         ))}
       </div>
+      <section className="section glass reveal-on-scroll">
+        <div className="row-between">
+          <h2>Площадки в каталоге</h2>
+          <span>{visibleVenues.length} вариантов</span>
+        </div>
+        {visibleVenues.length === 0 ? <p className="muted">По текущим фильтрам площадок не найдено.</p> : null}
+        <div className="cards-grid">
+          {visibleVenues.map((venue) => (
+            <article key={`catalog-venue-${venue.id}`} className="venue-card" onClick={() => navigate(`/venue/${venue.id}`)}>
+              <img src={venue.images[0]} alt={venue.title} loading="lazy" />
+              <div className="card-body">
+                <h3>{venue.title}</h3>
+                <p><span className="category-pill">{venue.category}</span> · {venue.region}</p>
+                <p>{venue.areaSqm} м2 · {venue.capacity} гостей</p>
+                <p className="price">от {formatRub(venue.pricePerHour)} ₽/час</p>
+                <span className="rating-corner">★ {venue.rating}</span>
+              </div>
+            </article>
+          ))}
+        </div>
+      </section>
       <section className="section glass reveal-on-scroll">
         <h2>Категории и города</h2>
         <div className="seo-links">
@@ -3111,6 +3180,7 @@ function App() {
 
 function AppContent({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: () => void }) {
   const location = useLocation();
+  const [language, setLanguage] = useLanguage();
   useEffect(() => {
     const onError = (event: ErrorEvent) => {
       const message = event.error?.message || event.message || "Unknown frontend error";
@@ -3164,7 +3234,7 @@ function AppContent({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: () 
   return (
     <div className="app-shell">
       <div className="animated-background" aria-hidden="true" />
-      <Header theme={theme} onToggleTheme={onToggleTheme} />
+        <Header theme={theme} onToggleTheme={onToggleTheme} language={language} onLanguageChange={setLanguage} />
       <main>
         <Routes>
           <Route path="/" element={<HomePage />} />
