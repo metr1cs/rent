@@ -1053,6 +1053,8 @@ const ownerVenueSchema = z.object({
   images: z.array(z.string().url()).min(3)
 });
 
+const ownerVenueUpdateSchema = ownerVenueSchema;
+
 app.get("/api/owner/venues", (req, res) => {
   const ownerId = String(req.query.ownerId ?? "");
   return res.json(venues.filter((item) => item.ownerId === ownerId));
@@ -1229,6 +1231,33 @@ app.post("/api/owner/venues", (req, res) => {
   venues.push(created);
   persistStateSync();
   return res.status(201).json(created);
+});
+
+app.patch("/api/owner/venues/:id", (req, res) => {
+  const parsed = ownerVenueUpdateSchema.safeParse(req.body);
+  if (!parsed.success) {
+    const firstIssue = parsed.error.issues[0];
+    const fieldName = String(firstIssue?.path?.[0] ?? "");
+    return res.status(400).json({ message: `Проверьте поле: ${fieldName || "payload"}` });
+  }
+
+  const venue = venues.find((item) => item.id === req.params.id);
+  if (!venue) return res.status(404).json({ message: "Venue not found" });
+  if (venue.ownerId !== parsed.data.ownerId) return res.status(403).json({ message: "Forbidden" });
+
+  venue.title = parsed.data.title;
+  venue.region = parsed.data.region;
+  venue.city = parsed.data.city;
+  venue.address = parsed.data.address;
+  venue.category = parsed.data.category;
+  venue.capacity = parsed.data.capacity;
+  venue.areaSqm = parsed.data.areaSqm;
+  venue.pricePerHour = parsed.data.pricePerHour;
+  venue.description = parsed.data.description;
+  venue.amenities = parsed.data.amenities;
+  venue.images = parsed.data.images;
+  persistStateSync();
+  return res.json({ message: "Площадка обновлена", venue });
 });
 
 const ownerDeleteVenueSchema = z.object({

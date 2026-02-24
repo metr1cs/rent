@@ -412,37 +412,57 @@ function Breadcrumbs({ items }: { items: Array<{ label: string; to?: string }> }
 function Header({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: () => void }) {
   const location = useLocation();
   const isOwnerRoute = location.pathname.startsWith("/owner");
+  const [menuOpen, setMenuOpen] = useState(false);
+
+  useEffect(() => {
+    setMenuOpen(false);
+  }, [location.pathname]);
 
   return (
     <header className="header glass">
       <Link to="/" className="brand brand-link" aria-label="VmestoRu — на главную">
-        <img src="/favicon.svg" alt="Логотип VmestoRu" className="brand-logo" width={34} height={34} />
+        <img src="/favicon.svg" alt="Логотип VmestoRu" className="brand-logo" width={68} height={68} />
         <div>
           <strong>VmestoRu</strong>
           <p>Премиальная аренда площадок для мероприятий</p>
         </div>
       </Link>
 
-      <nav className="nav">
-        <NavLink to="/catalog">Каталог</NavLink>
-        <a href="/#how-it-works">Как это работает</a>
-      </nav>
-
-      <div className="header-actions">
+      <div className="header-controls">
         <button
           type="button"
-          className={theme === "dark" ? "theme-switch is-dark" : "theme-switch"}
-          onClick={onToggleTheme}
-          aria-label="Переключить тему"
-          title="Переключить тему"
+          className={menuOpen ? "header-burger is-open" : "header-burger"}
+          aria-label="Открыть меню"
+          aria-expanded={menuOpen}
+          onClick={() => setMenuOpen((prev) => !prev)}
         >
-          <span className="theme-switch-track" aria-hidden="true">
-            <span className="theme-switch-thumb">{theme === "light" ? "☀" : "☾"}</span>
-          </span>
+          <span />
+          <span />
+          <span />
         </button>
-        <Link to={isOwnerRoute ? "/" : "/owner"} className="become-owner">
-          {isOwnerRoute ? "Назад в каталог" : "Для арендодателей"}
-        </Link>
+      </div>
+
+      <div className={menuOpen ? "header-menu open" : "header-menu"}>
+        <nav className="nav">
+          <NavLink to="/catalog">Каталог</NavLink>
+          <a href="/#how-it-works">Как это работает</a>
+        </nav>
+        <div className="header-actions">
+          <Link to={isOwnerRoute ? "/" : "/owner"} className="become-owner">
+            {isOwnerRoute ? "Назад в каталог" : "Для арендодателей"}
+          </Link>
+          <button
+            type="button"
+            className={theme === "dark" ? "theme-switch is-dark" : "theme-switch"}
+            onClick={onToggleTheme}
+            aria-label="Переключить тему"
+            title="Переключить тему"
+          >
+            <span className="theme-switch-track" aria-hidden="true">
+              <span className="theme-switch-thumb">{theme === "light" ? "☀" : "☾"}</span>
+            </span>
+          </button>
+        </div>
       </div>
     </header>
   );
@@ -1678,7 +1698,7 @@ function VenuePage() {
     }
 
     void trackEvent("lead_submit", { venueId: id });
-    setLeadMessage(payload.message);
+    setLeadMessage(`${payload.message}. Площадка: ${venue.title}`);
     setLead({ name: "", phone: "", comment: "" });
   }
 
@@ -1753,7 +1773,7 @@ function VenuePage() {
       </div>
 
       <form className="lead-form" onSubmit={sendLead}>
-        <h3>Оставить заявку арендодателю</h3>
+        <h3>Оставить заявку на площадку «{venue.title}»</h3>
         <input placeholder="Ваше имя" value={lead.name} onChange={(e) => setLead({ ...lead, name: e.target.value })} required />
         <input placeholder="Телефон" value={lead.phone} onChange={(e) => setLead({ ...lead, phone: e.target.value })} required />
         <textarea placeholder="Комментарий" value={lead.comment} onChange={(e) => setLead({ ...lead, comment: e.target.value })} />
@@ -1816,6 +1836,7 @@ function OwnerPage() {
   const [isSubmittingVenue, setIsSubmittingVenue] = useState(false);
   const [ownerCategories, setOwnerCategories] = useState<string[]>([]);
   const [updatingRequestId, setUpdatingRequestId] = useState("");
+  const [editingVenueId, setEditingVenueId] = useState("");
 
   useEffect(() => {
     applySeo({
@@ -1962,8 +1983,10 @@ function OwnerPage() {
     setIsSubmittingVenue(true);
 
     try {
-      const response = await fetch(`${API}/api/owner/venues`, {
-        method: "POST",
+      const response = await fetch(
+        editingVenueId ? `${API}/api/owner/venues/${encodeURIComponent(editingVenueId)}` : `${API}/api/owner/venues`,
+        {
+        method: editingVenueId ? "PATCH" : "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           ownerId: owner.id,
@@ -1995,7 +2018,7 @@ function OwnerPage() {
         return;
       }
 
-      setMessage("Площадка добавлена");
+      setMessage(editingVenueId ? "Площадка обновлена" : "Площадка добавлена");
       setVenueForm({
         ...venueForm,
         title: "",
@@ -2003,6 +2026,7 @@ function OwnerPage() {
         description: "",
         images: []
       });
+      setEditingVenueId("");
       await loadOwnerVenues(owner.id);
       await loadOwnerDashboard(owner.id);
     } catch {
@@ -2079,6 +2103,42 @@ function OwnerPage() {
         amenities: exists ? prev.amenities.filter((item) => item !== amenity) : [...prev.amenities, amenity]
       };
     });
+  }
+
+  function startEditVenue(venue: Venue): void {
+    setEditingVenueId(venue.id);
+    setVenueForm({
+      title: venue.title,
+      region: venue.region,
+      city: venue.city,
+      address: venue.address,
+      category: venue.category,
+      capacity: String(venue.capacity),
+      areaSqm: String(venue.areaSqm),
+      pricePerHour: String(venue.pricePerHour),
+      description: venue.description,
+      amenities: venue.amenities,
+      images: venue.images
+    });
+    setMessage("Режим редактирования площадки");
+  }
+
+  function cancelEditVenue(): void {
+    setEditingVenueId("");
+    setVenueForm({
+      title: "",
+      region: "Москва",
+      city: "Москва",
+      address: "",
+      category: ownerCategories[0] ?? "Лофт",
+      capacity: "50",
+      areaSqm: "120",
+      pricePerHour: "5000",
+      description: "",
+      amenities: ["Wi-Fi", "Проектор", "Звук"],
+      images: []
+    });
+    setMessage("Редактирование отменено");
   }
 
   function promotePhoto(index: number): void {
@@ -2223,7 +2283,7 @@ function OwnerPage() {
           </div>
 
           <form className="owner-venue-form" onSubmit={addVenue}>
-            <h3>Добавить площадку (можно несколько)</h3>
+            <h3>{editingVenueId ? "Редактировать площадку" : "Добавить площадку (можно несколько)"}</h3>
             <label className="filter-item">
               <span>Название площадки</span>
               <input value={venueForm.title} onChange={(e) => setVenueForm({ ...venueForm, title: e.target.value })} placeholder="Например: Loft Aurora" required />
@@ -2320,10 +2380,17 @@ function OwnerPage() {
                 </article>
               ))}
             </div>
-            <button type="submit" className="primary" disabled={isSubmittingVenue}>
-              {isSubmittingVenue ? "Сохраняем..." : "Добавить площадку"}
-            </button>
-            {message ? <p className={message === "Площадка добавлена" ? "ok" : "error-note"}>{message}</p> : null}
+            <div className="status-actions">
+              <button type="submit" className="primary" disabled={isSubmittingVenue}>
+                {isSubmittingVenue ? "Сохраняем..." : editingVenueId ? "Сохранить изменения" : "Добавить площадку"}
+              </button>
+              {editingVenueId ? (
+                <button type="button" className="ghost-btn" onClick={cancelEditVenue} disabled={isSubmittingVenue}>
+                  Отменить редактирование
+                </button>
+              ) : null}
+            </div>
+            {message ? <p className={message.includes("добавлена") || message.includes("обновлена") ? "ok" : "error-note"}>{message}</p> : null}
           </form>
 
           <section className="owner-venues">
@@ -2338,6 +2405,7 @@ function OwnerPage() {
                     <p>{venue.areaSqm} м2 · {venue.capacity} гостей</p>
                     <p>{venue.address}</p>
                     <span className="rating-corner">★ {venue.rating}</span>
+                    <button type="button" className="chip owner-edit-btn" onClick={() => startEditVenue(venue)}>Редактировать</button>
                     <button type="button" className="ghost-btn owner-delete-btn" onClick={() => void deleteVenue(venue.id)}>Удалить</button>
                   </div>
                 </article>
@@ -2966,7 +3034,7 @@ function Footer() {
       <div className="footer-grid">
         <div>
           <Link to="/" className="footer-brand" aria-label="VmestoRu — на главную">
-            <img src="/favicon.svg" alt="Логотип VmestoRu" className="footer-brand-logo" width={28} height={28} />
+            <img src="/favicon.svg" alt="Логотип VmestoRu" className="footer-brand-logo" width={56} height={56} />
             <strong>VmestoRu</strong>
           </Link>
           <p>Премиальная платформа аренды площадок под мероприятия.</p>
