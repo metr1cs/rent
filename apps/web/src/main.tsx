@@ -1818,6 +1818,7 @@ function OwnerPage() {
   const [requestStatusFilter, setRequestStatusFilter] = useState("");
   const [requestSlaFilter, setRequestSlaFilter] = useState("");
   const [requestQuery, setRequestQuery] = useState("");
+  const [isSubmittingVenue, setIsSubmittingVenue] = useState(false);
 
   useEffect(() => {
     applySeo({
@@ -1931,46 +1932,61 @@ function OwnerPage() {
   async function addVenue(event: FormEvent): Promise<void> {
     event.preventDefault();
     if (!owner) return;
+    setMessage("");
     if (venueForm.images.length < 3) {
       setMessage("Добавьте минимум 3 фотографии площадки");
       return;
     }
-
-    const response = await fetch(`${API}/api/owner/venues`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        ownerId: owner.id,
-        title: venueForm.title,
-        region: venueForm.region,
-        city: venueForm.city,
-        address: venueForm.address,
-        category: venueForm.category,
-        capacity: Number(venueForm.capacity),
-        areaSqm: Number(venueForm.areaSqm),
-        pricePerHour: Number(venueForm.pricePerHour),
-        description: venueForm.description,
-        amenities: venueForm.amenities.split(",").map((item) => item.trim()).filter(Boolean),
-        images: venueForm.images,
-      })
-    });
-
-    const json = await response.json();
-    if (!response.ok) {
-      setMessage(json.message ?? "Не удалось добавить площадку");
+    if (!venueForm.region.trim() || !venueForm.city.trim() || !venueForm.category.trim()) {
+      setMessage("Заполните регион, город и категорию площадки");
+      return;
+    }
+    if (Number(venueForm.capacity) <= 0 || Number(venueForm.areaSqm) <= 0 || Number(venueForm.pricePerHour) <= 0) {
+      setMessage("Проверьте числовые поля: вместимость, площадь и цена должны быть больше 0");
       return;
     }
 
-    setMessage("Площадка добавлена");
-    setVenueForm({
-      ...venueForm,
-      title: "",
-      address: "",
-      description: "",
-      images: []
-    });
-    await loadOwnerVenues(owner.id);
-    await loadOwnerDashboard(owner.id);
+    setIsSubmittingVenue(true);
+
+    try {
+      const response = await fetch(`${API}/api/owner/venues`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          ownerId: owner.id,
+          title: venueForm.title,
+          region: venueForm.region,
+          city: venueForm.city,
+          address: venueForm.address,
+          category: venueForm.category,
+          capacity: Number(venueForm.capacity),
+          areaSqm: Number(venueForm.areaSqm),
+          pricePerHour: Number(venueForm.pricePerHour),
+          description: venueForm.description,
+          amenities: venueForm.amenities.split(",").map((item) => item.trim()).filter(Boolean),
+          images: venueForm.images,
+        })
+      });
+
+      const json = await response.json();
+      if (!response.ok) {
+        setMessage(json.message ?? "Не удалось добавить площадку");
+        return;
+      }
+
+      setMessage("Площадка добавлена");
+      setVenueForm({
+        ...venueForm,
+        title: "",
+        address: "",
+        description: "",
+        images: []
+      });
+      await loadOwnerVenues(owner.id);
+      await loadOwnerDashboard(owner.id);
+    } finally {
+      setIsSubmittingVenue(false);
+    }
   }
 
   async function addPhotosFromDevice(event: ChangeEvent<HTMLInputElement>): Promise<void> {
@@ -2163,6 +2179,7 @@ function OwnerPage() {
                   value={venueForm.region}
                   onChange={(e) => setVenueForm({ ...venueForm, region: e.target.value })}
                   placeholder="Например: Республика Коми"
+                  required
                 />
               </label>
               <label className="filter-item">
@@ -2171,24 +2188,25 @@ function OwnerPage() {
                   value={venueForm.city}
                   onChange={(e) => setVenueForm({ ...venueForm, city: e.target.value })}
                   placeholder="Например: Ухта"
+                  required
                 />
               </label>
               <label className="filter-item">
                 <span>Вместимость</span>
-                <input type="number" min="1" value={venueForm.capacity} onChange={(e) => setVenueForm({ ...venueForm, capacity: e.target.value })} />
+                <input type="number" min="1" value={venueForm.capacity} onChange={(e) => setVenueForm({ ...venueForm, capacity: e.target.value })} required />
               </label>
               <label className="filter-item">
                 <span>Площадь (м2)</span>
-                <input type="number" min="1" value={venueForm.areaSqm} onChange={(e) => setVenueForm({ ...venueForm, areaSqm: e.target.value })} />
+                <input type="number" min="1" value={venueForm.areaSqm} onChange={(e) => setVenueForm({ ...venueForm, areaSqm: e.target.value })} required />
               </label>
               <label className="filter-item">
                 <span>Цена за час (₽)</span>
-                <input type="number" min="1" value={venueForm.pricePerHour} onChange={(e) => setVenueForm({ ...venueForm, pricePerHour: e.target.value })} />
+                <input type="number" min="1" value={venueForm.pricePerHour} onChange={(e) => setVenueForm({ ...venueForm, pricePerHour: e.target.value })} required />
               </label>
             </div>
             <label className="filter-item">
               <span>Категория</span>
-              <input value={venueForm.category} onChange={(e) => setVenueForm({ ...venueForm, category: e.target.value })} placeholder="Например: Лофт" />
+              <input value={venueForm.category} onChange={(e) => setVenueForm({ ...venueForm, category: e.target.value })} placeholder="Например: Лофт" required />
             </label>
             <label className="filter-item">
               <span>Описание</span>
@@ -2223,7 +2241,10 @@ function OwnerPage() {
                 </article>
               ))}
             </div>
-            <button type="submit" className="primary">Добавить площадку</button>
+            <button type="submit" className="primary" disabled={isSubmittingVenue}>
+              {isSubmittingVenue ? "Сохраняем..." : "Добавить площадку"}
+            </button>
+            {message ? <p className={message === "Площадка добавлена" ? "ok" : "error-note"}>{message}</p> : null}
           </form>
 
           <section className="owner-venues">
@@ -2310,7 +2331,7 @@ function OwnerPage() {
         </>
       )}
 
-      {message ? <p className="ok">{message}</p> : null}
+      {!owner ? (message ? <p className="error-note">{message}</p> : null) : null}
     </section>
   );
 }
