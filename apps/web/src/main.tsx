@@ -316,6 +316,22 @@ async function trackEvent(
   }
 }
 
+async function reportFrontendError(message: string, source = "window"): Promise<void> {
+  try {
+    await fetch(`${API}/api/monitor/frontend-error`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        path: typeof window !== "undefined" ? window.location.pathname : "/",
+        message: message.slice(0, 1500),
+        source,
+      }),
+    });
+  } catch {
+    // ignore monitoring transport errors
+  }
+}
+
 function formatRub(value: number): string {
   return new Intl.NumberFormat("ru-RU").format(value);
 }
@@ -980,6 +996,14 @@ function HomePage() {
             <span key={item} className="seo-link-pill muted-city">{item}</span>
           ))}
         </div>
+        <div className="static-category-grid">
+          {homeCategoryCards.map((item) => (
+            <Link key={`home-static-${item.id}`} className="static-category-card" to={`/category/${categoryToSlug(item.name)}`}>
+              <img src={item.image} alt={item.name} loading="lazy" />
+              <span>{item.name}</span>
+            </Link>
+          ))}
+        </div>
       </section>
 
       <section className="section glass reveal-on-scroll">
@@ -1146,6 +1170,14 @@ function CatalogPage() {
         <div className="seo-links muted-links">
           {regions.map((item) => (
             <span key={item} className="seo-link-pill muted-city">{item}</span>
+          ))}
+        </div>
+        <div className="static-category-grid">
+          {categoryCards.map((item) => (
+            <Link key={`catalog-static-${item.id}`} className="static-category-card" to={`/category/${categoryToSlug(item.name)}`}>
+              <img src={item.image} alt={item.name} loading="lazy" />
+              <span>{item.name}</span>
+            </Link>
           ))}
         </div>
       </section>
@@ -2659,6 +2691,27 @@ function App() {
 
 function AppContent({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: () => void }) {
   const location = useLocation();
+  useEffect(() => {
+    const onError = (event: ErrorEvent) => {
+      const message = event.error?.message || event.message || "Unknown frontend error";
+      void reportFrontendError(message, "error");
+    };
+    const onUnhandledRejection = (event: PromiseRejectionEvent) => {
+      const reason =
+        typeof event.reason === "string"
+          ? event.reason
+          : event.reason?.message || JSON.stringify(event.reason ?? "Unknown rejection");
+      void reportFrontendError(reason, "unhandledrejection");
+    };
+
+    window.addEventListener("error", onError);
+    window.addEventListener("unhandledrejection", onUnhandledRejection);
+    return () => {
+      window.removeEventListener("error", onError);
+      window.removeEventListener("unhandledrejection", onUnhandledRejection);
+    };
+  }, []);
+
   useEffect(() => {
     const targets = Array.from(document.querySelectorAll<HTMLElement>(".reveal-on-scroll"));
     if (targets.length === 0) return;

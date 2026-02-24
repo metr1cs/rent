@@ -95,6 +95,8 @@ npm run build
 - Release checklist: `docs/RELEASE_CHECKLIST.md`
 - PR template: `.github/pull_request_template.md`
 - Production deploy workflow: `.github/workflows/deploy.yml`
+- SEO strategy/forecast: `docs/SEO_STRATEGY_2026_Q2.md`
+- Observability alerts: `docs/OBSERVABILITY_ALERTS.md`
 
 ## Хранение данных API (персистентность)
 - API сохраняет runtime-данные в JSON-файл между рестартами.

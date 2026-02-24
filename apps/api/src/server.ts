@@ -19,8 +19,72 @@ const reminderSendRegistry = new Set<string>();
 const adminSessions = new Map<string, { moderator: string; expiresAt: number }>();
 const adminSessionTtlMs = 8 * 60 * 60 * 1000;
 
+type FrontendErrorEvent = {
+  id: string;
+  path: string;
+  message: string;
+  source?: string;
+  createdAt: string;
+};
+
+const monitoringState = {
+  startedAt: new Date().toISOString(),
+  requestsTotal: 0,
+  statusBuckets: {
+    s2xx: 0,
+    s4xx: 0,
+    s5xx: 0,
+  },
+  requestLatenciesMs: [] as number[],
+  endpoint5xx: {} as Record<string, number>,
+  support: {
+    success: 0,
+    failed: 0,
+  },
+  telegram: {
+    success: 0,
+    failed: 0,
+  },
+  frontendErrors: [] as FrontendErrorEvent[],
+};
+
+function pushLatencySample(value: number): void {
+  monitoringState.requestLatenciesMs.push(value);
+  if (monitoringState.requestLatenciesMs.length > 1200) monitoringState.requestLatenciesMs.shift();
+}
+
+function percentile(values: number[], ratio: number): number {
+  if (!values.length) return 0;
+  const sorted = [...values].sort((a, b) => a - b);
+  const index = Math.min(sorted.length - 1, Math.max(0, Math.floor(sorted.length * ratio)));
+  return sorted[index];
+}
+
+function safeEndpointKey(pathname: string): string {
+  return pathname.replace(/[0-9]+/g, ":id");
+}
+
 app.use(cors());
 app.use(express.json());
+app.use((req, res, next) => {
+  const started = Date.now();
+  res.on("finish", () => {
+    const elapsed = Date.now() - started;
+    monitoringState.requestsTotal += 1;
+    pushLatencySample(elapsed);
+
+    if (res.statusCode >= 500) {
+      monitoringState.statusBuckets.s5xx += 1;
+      const key = safeEndpointKey(req.path);
+      monitoringState.endpoint5xx[key] = (monitoringState.endpoint5xx[key] ?? 0) + 1;
+    } else if (res.statusCode >= 400) {
+      monitoringState.statusBuckets.s4xx += 1;
+    } else {
+      monitoringState.statusBuckets.s2xx += 1;
+    }
+  });
+  next();
+});
 initDataStore();
 
 function requireAdmin(req: Request, res: Response): string | null {
@@ -37,9 +101,12 @@ function requireAdmin(req: Request, res: Response): string | null {
 
 async function sendTelegramNotification(text: string, chatIdOverride?: string): Promise<void> {
   const targetChatId = (chatIdOverride ?? telegramChatId).trim();
-  if (!telegramBotToken || !targetChatId) return;
+  if (!telegramBotToken || !targetChatId) {
+    monitoringState.telegram.failed += 1;
+    return;
+  }
   try {
-    await fetch(`https://api.telegram.org/bot${telegramBotToken}/sendMessage`, {
+    const response = await fetch(`https://api.telegram.org/bot${telegramBotToken}/sendMessage`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -48,7 +115,13 @@ async function sendTelegramNotification(text: string, chatIdOverride?: string): 
         disable_web_page_preview: true
       })
     });
+    if (response.ok) {
+      monitoringState.telegram.success += 1;
+    } else {
+      monitoringState.telegram.failed += 1;
+    }
   } catch (error) {
+    monitoringState.telegram.failed += 1;
     console.error("Telegram notify failed", error);
   }
 }
@@ -300,6 +373,49 @@ app.get("/api/admin/ops/readiness", (req, res) => {
       "Keep review moderation queue below 24h SLA",
       "Review legal disclosures each release"
     ]
+  });
+});
+
+app.get("/api/admin/ops/alerts", (req, res) => {
+  const moderator = requireAdmin(req, res);
+  if (!moderator) return;
+
+  const latencies = monitoringState.requestLatenciesMs;
+  const p95 = percentile(latencies, 0.95);
+  const p99 = percentile(latencies, 0.99);
+  const total = monitoringState.requestsTotal || 1;
+  const errorRate5xx = Number(((monitoringState.statusBuckets.s5xx / total) * 100).toFixed(2));
+  const supportTotal = monitoringState.support.success + monitoringState.support.failed;
+  const supportFailureRate = supportTotal ? Number(((monitoringState.support.failed / supportTotal) * 100).toFixed(2)) : 0;
+
+  const alerts = [
+    errorRate5xx > 2 ? `Высокий 5xx rate: ${errorRate5xx}%` : "",
+    p95 > 1200 ? `Высокая latency p95: ${p95} ms` : "",
+    supportFailureRate > 5 ? `Высокий fail-rate поддержки: ${supportFailureRate}%` : "",
+    monitoringState.telegram.failed > monitoringState.telegram.success ? "Telegram failures превышают success" : "",
+  ].filter(Boolean);
+
+  const top5xxEndpoints = Object.entries(monitoringState.endpoint5xx)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 10)
+    .map(([path, count]) => ({ path, count }));
+
+  return res.json({
+    startedAt: monitoringState.startedAt,
+    requests: {
+      total: monitoringState.requestsTotal,
+      statusBuckets: monitoringState.statusBuckets,
+      errorRate5xx,
+      latencyMs: {
+        p95,
+        p99,
+      },
+      top5xxEndpoints,
+    },
+    support: monitoringState.support,
+    telegram: monitoringState.telegram,
+    frontendErrors: monitoringState.frontendErrors.slice(-30).reverse(),
+    alerts,
   });
 });
 
@@ -594,6 +710,27 @@ const supportRequestSchema = z.object({
   page: z.string().max(400).optional()
 });
 
+const frontendErrorSchema = z.object({
+  path: z.string().max(400),
+  message: z.string().max(1500),
+  source: z.string().max(120).optional(),
+});
+
+app.post("/api/monitor/frontend-error", (req, res) => {
+  const parsed = frontendErrorSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ message: "Invalid frontend error payload" });
+
+  monitoringState.frontendErrors.push({
+    id: `FE-${Date.now()}`,
+    path: parsed.data.path,
+    message: parsed.data.message,
+    source: parsed.data.source,
+    createdAt: new Date().toISOString(),
+  });
+  if (monitoringState.frontendErrors.length > 300) monitoringState.frontendErrors.shift();
+  return res.status(201).json({ ok: true });
+});
+
 app.post("/api/support/requests", (req, res) => {
   const parsed = supportRequestSchema.safeParse(req.body);
   if (!parsed.success) {
@@ -604,9 +741,11 @@ app.post("/api/support/requests", (req, res) => {
   }
   const normalizedMessage = (parsed.data.message || parsed.data.text || parsed.data.comment || "").trim();
   if (!normalizedMessage) {
+    monitoringState.support.failed += 1;
     return res.status(400).json({ message: "Добавьте текст обращения в поддержку." });
   }
   if (!telegramBotToken || !supportTelegramChatId.trim()) {
+    monitoringState.support.failed += 1;
     return res.status(503).json({ message: "Канал поддержки временно недоступен. Свяжитесь по номеру +7 (995) 592-62-60." });
   }
 
@@ -623,6 +762,7 @@ app.post("/api/support/requests", (req, res) => {
     supportTelegramChatId
   );
 
+  monitoringState.support.success += 1;
   return res.status(201).json({ message: "Запрос отправлен в поддержку. Мы свяжемся с вами в ближайшее время." });
 });
 
