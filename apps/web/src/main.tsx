@@ -137,8 +137,7 @@ const inferredApiBase =
 const rawApiBase = envApiBase && envApiBase.length > 0 ? envApiBase : inferredApiBase;
 const API = rawApiBase.endsWith("/") ? rawApiBase.slice(0, -1) : rawApiBase;
 const SITE_URL = ((import.meta.env.VITE_SITE_URL as string | undefined)?.trim() || "https://vmestoru.ru").replace(/\/+$/, "");
-const DEFAULT_OG_IMAGE =
-  "https://images.unsplash.com/photo-1519167758481-83f550bb49b3?auto=format&fit=crop&w=1400&q=80";
+const DEFAULT_OG_IMAGE = `${SITE_URL}/favicon-512x512.png`;
 const CATEGORY_ART_ORDER = [
   "Лофт",
   "Банкетный зал",
@@ -161,28 +160,6 @@ const CATEGORY_ART_ORDER = [
   "Шоурум / pop-up",
   "Универсальный зал",
 ];
-const CATEGORY_STOCK_IMAGES: Record<string, string> = {
-  "Лофт": "https://images.unsplash.com/photo-1524758631624-e2822e304c36?auto=format&fit=crop&w=1400&q=80",
-  "Банкетный зал": "https://images.unsplash.com/photo-1464366400600-7168b8af9bc3?auto=format&fit=crop&w=1400&q=80",
-  "Ресторан для мероприятий": "https://images.unsplash.com/photo-1559339352-11d035aa65de?auto=format&fit=crop&w=1400&q=80",
-  "Конференц-зал": "https://images.unsplash.com/photo-1517502884422-41eaead166d4?auto=format&fit=crop&w=1400&q=80",
-  "Переговорная": "https://images.unsplash.com/photo-1497366811353-6870744d04b2?auto=format&fit=crop&w=1400&q=80",
-  "Фотостудия": "https://images.unsplash.com/photo-1493863641943-9b68992a8d07?auto=format&fit=crop&w=1400&q=80",
-  "Видеостудия / подкаст": "https://images.unsplash.com/photo-1590602847861-f357a9332bbc?auto=format&fit=crop&w=1400&q=80",
-  "Коворкинг / event-space": "https://images.unsplash.com/photo-1497366216548-37526070297c?auto=format&fit=crop&w=1400&q=80",
-  "Выставочный зал": "https://images.unsplash.com/photo-1531058020387-3be344556be6?auto=format&fit=crop&w=1400&q=80",
-  "Арт-пространство": "https://images.unsplash.com/photo-1577083552431-6e5fd01988f1?auto=format&fit=crop&w=1400&q=80",
-  "Концертная площадка": "https://images.unsplash.com/photo-1503095396549-807759245b35?auto=format&fit=crop&w=1400&q=80",
-  "Театр / сцена": "https://images.unsplash.com/photo-1507924538820-ede94a04019d?auto=format&fit=crop&w=1400&q=80",
-  "Спортзал / танцевальный": "https://images.unsplash.com/photo-1518611012118-696072aa579a?auto=format&fit=crop&w=1400&q=80",
-  "Детское пространство": "https://images.unsplash.com/photo-1516627145497-ae6968895b74?auto=format&fit=crop&w=1400&q=80",
-  "Коттедж / загородный дом": "https://images.unsplash.com/photo-1568605114967-8130f3a36994?auto=format&fit=crop&w=1400&q=80",
-  "База отдыха": "https://images.unsplash.com/photo-1507525428034-b723cf961d3e?auto=format&fit=crop&w=1400&q=80",
-  "Терраса / rooftop": "https://images.unsplash.com/photo-1489515217757-5fd1be406fef?auto=format&fit=crop&w=1400&q=80",
-  "Теплоход / яхта": "https://images.unsplash.com/photo-1569263979104-865ab7cd8d13?auto=format&fit=crop&w=1400&q=80",
-  "Шоурум / pop-up": "https://images.unsplash.com/photo-1441986300917-64674bd600d8?auto=format&fit=crop&w=1400&q=80",
-  "Универсальный зал": "https://images.unsplash.com/photo-1519167758481-83f550bb49b3?auto=format&fit=crop&w=1400&q=80",
-};
 
 function upsertMetaTag(
   key: "name" | "property",
@@ -294,9 +271,7 @@ function regionToSlug(value: string): string {
 function categoryWebpArt(name: string): string {
   const index = CATEGORY_ART_ORDER.findIndex((item) => item === name);
   if (index >= 0) return `/catalog-art/c${String(index + 1).padStart(2, "0")}.webp`;
-  const stockImage = CATEGORY_STOCK_IMAGES[name];
-  if (stockImage) return stockImage;
-  return DEFAULT_OG_IMAGE;
+  return "/catalog-art/c01.webp";
 }
 
 async function trackEvent(
@@ -958,7 +933,15 @@ function HomePage() {
         <div className="category-grid">
           {homeCategoryCards.map((item) => (
             <Link key={item.id} className="category-tile" to={`/category/${categoryToSlug(item.name)}`}>
-              <img src={item.image} alt={item.name} loading="lazy" />
+              <img
+                src={item.image}
+                alt={item.name}
+                loading="lazy"
+                onError={(e) => {
+                  if (e.currentTarget.src.includes("/catalog-art/c01.webp")) return;
+                  e.currentTarget.src = "/catalog-art/c01.webp";
+                }}
+              />
               <div className="category-tile-body">
                 <h3>{item.name}</h3>
                 <p>{item.count} вариантов</p>
@@ -1026,7 +1009,15 @@ function HomePage() {
         <div className="static-category-grid">
           {homeCategoryCards.map((item) => (
             <Link key={`home-static-${item.id}`} className="static-category-card" to={`/category/${categoryToSlug(item.name)}`}>
-              <img src={item.image} alt={item.name} loading="lazy" />
+              <img
+                src={item.image}
+                alt={item.name}
+                loading="lazy"
+                onError={(e) => {
+                  if (e.currentTarget.src.includes("/catalog-art/c01.webp")) return;
+                  e.currentTarget.src = "/catalog-art/c01.webp";
+                }}
+              />
               <span>{item.name}</span>
             </Link>
           ))}
@@ -1202,7 +1193,15 @@ function CatalogPage() {
         <div className="static-category-grid">
           {categoryCards.map((item) => (
             <Link key={`catalog-static-${item.id}`} className="static-category-card" to={`/category/${categoryToSlug(item.name)}`}>
-              <img src={item.image} alt={item.name} loading="lazy" />
+              <img
+                src={item.image}
+                alt={item.name}
+                loading="lazy"
+                onError={(e) => {
+                  if (e.currentTarget.src.includes("/catalog-art/c01.webp")) return;
+                  e.currentTarget.src = "/catalog-art/c01.webp";
+                }}
+              />
               <span>{item.name}</span>
             </Link>
           ))}
