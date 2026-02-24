@@ -681,11 +681,19 @@ input[type="number"] {
   color: inherit;
 }
 
-.static-category-card img {
+.static-category-placeholder {
   width: 100%;
   height: 102px;
-  object-fit: cover;
-  display: block;
+  display: grid;
+  place-items: center;
+  padding: 8px;
+  text-align: center;
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .04em;
+  color: var(--muted);
+  background: linear-gradient(130deg, color-mix(in oklab, var(--brand-a) 16%, var(--surface-soft)), color-mix(in oklab, var(--brand-b) 14%, var(--surface-soft)));
 }
 
 .static-category-card span {
@@ -746,10 +754,19 @@ input[type="number"] {
   transform: translateY(-2px);
 }
 
-.category-tile img {
+.category-tile-placeholder {
   width: 100%;
   aspect-ratio: 16 / 9;
-  object-fit: cover;
+  display: grid;
+  place-items: center;
+  padding: 10px;
+  text-align: center;
+  font-size: 13px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .04em;
+  color: var(--muted);
+  background: linear-gradient(130deg, color-mix(in oklab, var(--brand-a) 16%, var(--surface-soft)), color-mix(in oklab, var(--brand-b) 14%, var(--surface-soft)));
 }
 
 .category-tile-body {

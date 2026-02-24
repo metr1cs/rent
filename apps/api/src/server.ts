@@ -65,7 +65,7 @@ function safeEndpointKey(pathname: string): string {
 }
 
 app.use(cors());
-app.use(express.json());
+app.use(express.json({ limit: "20mb" }));
 app.use((req, res, next) => {
   const started = Date.now();
   res.on("finish", () => {
@@ -83,6 +83,14 @@ app.use((req, res, next) => {
       monitoringState.statusBuckets.s2xx += 1;
     }
   });
+  next();
+});
+
+app.use((error: unknown, _req: Request, res: Response, next: () => void) => {
+  const payload = error as { type?: string };
+  if (payload?.type === "entity.too.large") {
+    return res.status(413).json({ message: "Файлы слишком большие. Уменьшите размер фото (до 8 МБ каждое)." });
+  }
   next();
 });
 initDataStore();

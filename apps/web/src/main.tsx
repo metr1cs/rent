@@ -935,15 +935,7 @@ function HomePage() {
         <div className="category-grid">
           {homeCategoryCards.map((item) => (
             <Link key={item.id} className="category-tile" to={`/category/${categoryToSlug(item.name)}`}>
-              <img
-                src={item.image}
-                alt={item.name}
-                loading="lazy"
-                onError={(e) => {
-                  if (e.currentTarget.src.includes("/catalog-art/c01.webp")) return;
-                  e.currentTarget.src = "/catalog-art/c01.webp";
-                }}
-              />
+              <div className="category-tile-placeholder">скоро появится фото</div>
               <div className="category-tile-body">
                 <h3>{item.name}</h3>
                 <p>{item.count} вариантов</p>
@@ -1011,15 +1003,7 @@ function HomePage() {
         <div className="static-category-grid">
           {homeCategoryCards.map((item) => (
             <Link key={`home-static-${item.id}`} className="static-category-card" to={`/category/${categoryToSlug(item.name)}`}>
-              <img
-                src={item.image}
-                alt={item.name}
-                loading="lazy"
-                onError={(e) => {
-                  if (e.currentTarget.src.includes("/catalog-art/c01.webp")) return;
-                  e.currentTarget.src = "/catalog-art/c01.webp";
-                }}
-              />
+              <div className="static-category-placeholder">скоро появится фото</div>
               <span>{item.name}</span>
             </Link>
           ))}
@@ -1170,7 +1154,7 @@ function CatalogPage() {
             to={`/category/${categoryToSlug(item.name)}${region ? `?region=${encodeURIComponent(region)}` : ""}`}
             onClick={() => void trackEvent("category_open", { category: item.name, region: region || "all", from: "catalog" })}
           >
-            <img src={item.image} alt={item.name} loading="lazy" />
+            <div className="category-tile-placeholder">скоро появится фото</div>
             <div className="category-tile-body">
               <h3>{item.name}</h3>
               <p>{item.count} площадок</p>
@@ -1195,15 +1179,7 @@ function CatalogPage() {
         <div className="static-category-grid">
           {categoryCards.map((item) => (
             <Link key={`catalog-static-${item.id}`} className="static-category-card" to={`/category/${categoryToSlug(item.name)}`}>
-              <img
-                src={item.image}
-                alt={item.name}
-                loading="lazy"
-                onError={(e) => {
-                  if (e.currentTarget.src.includes("/catalog-art/c01.webp")) return;
-                  e.currentTarget.src = "/catalog-art/c01.webp";
-                }}
-              />
+              <div className="static-category-placeholder">скоро появится фото</div>
               <span>{item.name}</span>
             </Link>
           ))}
@@ -1333,7 +1309,7 @@ function CityPage() {
         <div className="category-grid">
           {categoryCards.map((item) => (
             <Link key={item.id} className="category-tile" to={`/category/${categoryToSlug(item.name)}/${regionToSlug(regionName)}`}>
-              <img src={item.image} alt={item.name} loading="lazy" />
+              <div className="category-tile-placeholder">скоро появится фото</div>
               <div className="category-tile-body">
                 <h3>{item.name}</h3>
                 <p>{item.count} площадок</p>
@@ -1819,6 +1795,7 @@ function OwnerPage() {
   const [requestSlaFilter, setRequestSlaFilter] = useState("");
   const [requestQuery, setRequestQuery] = useState("");
   const [isSubmittingVenue, setIsSubmittingVenue] = useState(false);
+  const [ownerCategories, setOwnerCategories] = useState<string[]>([]);
 
   useEffect(() => {
     applySeo({
@@ -1844,6 +1821,10 @@ function OwnerPage() {
     const savedOwnerId = localStorage.getItem(OWNER_SESSION_KEY)?.trim();
     if (!savedOwnerId) return;
     void restoreOwnerSession(savedOwnerId);
+  }, []);
+
+  useEffect(() => {
+    void loadOwnerCategories();
   }, []);
 
   const [venueForm, setVenueForm] = useState({
@@ -1929,6 +1910,18 @@ function OwnerPage() {
     setOwnerRequests((await response.json()) as OwnerLead[]);
   }
 
+  async function loadOwnerCategories(): Promise<void> {
+    try {
+      const response = await fetch(`${API}/api/categories`);
+      if (!response.ok) return;
+      const payload = (await response.json()) as Category[];
+      const names = payload.map((item) => item.name).filter(Boolean);
+      setOwnerCategories(names);
+    } catch {
+      setOwnerCategories([]);
+    }
+  }
+
   async function addVenue(event: FormEvent): Promise<void> {
     event.preventDefault();
     if (!owner) return;
@@ -1968,7 +1961,7 @@ function OwnerPage() {
         })
       });
 
-      const json = await response.json();
+      const json = (await response.json().catch(() => ({}))) as { message?: string };
       if (!response.ok) {
         setMessage(json.message ?? "Не удалось добавить площадку");
         return;
@@ -1984,6 +1977,8 @@ function OwnerPage() {
       });
       await loadOwnerVenues(owner.id);
       await loadOwnerDashboard(owner.id);
+    } catch {
+      setMessage("Ошибка сети или слишком большой размер загружаемых фото.");
     } finally {
       setIsSubmittingVenue(false);
     }
@@ -2206,7 +2201,15 @@ function OwnerPage() {
             </div>
             <label className="filter-item">
               <span>Категория</span>
-              <input value={venueForm.category} onChange={(e) => setVenueForm({ ...venueForm, category: e.target.value })} placeholder="Например: Лофт" required />
+              <select value={venueForm.category} onChange={(e) => setVenueForm({ ...venueForm, category: e.target.value })} required>
+                {ownerCategories.length > 0 ? (
+                  ownerCategories.map((item) => (
+                    <option key={item} value={item}>{item}</option>
+                  ))
+                ) : (
+                  <option value={venueForm.category}>{venueForm.category}</option>
+                )}
+              </select>
             </label>
             <label className="filter-item">
               <span>Описание</span>
