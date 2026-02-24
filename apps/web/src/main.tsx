@@ -1815,6 +1815,7 @@ function OwnerPage() {
   const [requestQuery, setRequestQuery] = useState("");
   const [isSubmittingVenue, setIsSubmittingVenue] = useState(false);
   const [ownerCategories, setOwnerCategories] = useState<string[]>([]);
+  const [updatingRequestId, setUpdatingRequestId] = useState("");
 
   useEffect(() => {
     applySeo({
@@ -2114,18 +2115,37 @@ function OwnerPage() {
 
   async function updateLeadStatus(requestId: string, status: OwnerLead["status"]): Promise<void> {
     if (!owner) return;
-    const response = await fetch(`${API}/api/owner/requests/${encodeURIComponent(requestId)}/status`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ ownerId: owner.id, status })
-    });
-    const json = await response.json();
-    if (!response.ok) {
-      setMessage(json.message ?? "Не удалось обновить статус");
+    const current = ownerRequests.find((item) => item.id === requestId);
+    if (current?.status === status) {
+      setMessage("Этот статус уже установлен");
       return;
     }
-    await loadOwnerRequests(owner.id, requestStatusFilter, requestSlaFilter, requestQuery);
-    await loadOwnerDashboard(owner.id);
+
+    setUpdatingRequestId(requestId);
+    setOwnerRequests((prev) => prev.map((item) => (item.id === requestId ? { ...item, status } : item)));
+
+    try {
+      const response = await fetch(`${API}/api/owner/requests/${encodeURIComponent(requestId)}/status`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ownerId: owner.id, status })
+      });
+      const json = (await response.json().catch(() => ({}))) as { message?: string };
+      if (!response.ok) {
+        setOwnerRequests((prev) => prev.map((item) => (item.id === requestId ? { ...item, status: current?.status ?? item.status } : item)));
+        setMessage(json.message ?? "Не удалось обновить статус");
+        return;
+      }
+
+      setMessage("Статус заявки обновлен");
+      await loadOwnerRequests(owner.id, requestStatusFilter, requestSlaFilter, requestQuery);
+      await loadOwnerDashboard(owner.id);
+    } catch {
+      setOwnerRequests((prev) => prev.map((item) => (item.id === requestId ? { ...item, status: current?.status ?? item.status } : item)));
+      setMessage("Не удалось обновить статус: ошибка сети");
+    } finally {
+      setUpdatingRequestId("");
+    }
   }
 
   async function applyRequestFilters(event: FormEvent): Promise<void> {
@@ -2378,14 +2398,43 @@ function OwnerPage() {
                 <p>{request.venueTitle} · {request.venueAddress}</p>
                 {request.comment ? <p>{request.comment}</p> : null}
                 <div className="status-actions">
-                  <button type="button" className="chip" onClick={() => void updateLeadStatus(request.id, "in_progress")}>В работе</button>
-                  <button type="button" className="chip" onClick={() => void updateLeadStatus(request.id, "call_scheduled")}>Созвон</button>
-                  <button type="button" className="chip" onClick={() => void updateLeadStatus(request.id, "confirmed")}>Подтвердить</button>
-                  <button type="button" className="chip" onClick={() => void updateLeadStatus(request.id, "rejected")}>Отклонить</button>
+                  <button
+                    type="button"
+                    className={request.status === "in_progress" ? "chip active" : "chip"}
+                    onClick={() => void updateLeadStatus(request.id, "in_progress")}
+                    disabled={updatingRequestId === request.id}
+                  >
+                    В работе
+                  </button>
+                  <button
+                    type="button"
+                    className={request.status === "call_scheduled" ? "chip active" : "chip"}
+                    onClick={() => void updateLeadStatus(request.id, "call_scheduled")}
+                    disabled={updatingRequestId === request.id}
+                  >
+                    Созвон
+                  </button>
+                  <button
+                    type="button"
+                    className={request.status === "confirmed" ? "chip active" : "chip"}
+                    onClick={() => void updateLeadStatus(request.id, "confirmed")}
+                    disabled={updatingRequestId === request.id}
+                  >
+                    Подтвердить
+                  </button>
+                  <button
+                    type="button"
+                    className={request.status === "rejected" ? "chip active" : "chip"}
+                    onClick={() => void updateLeadStatus(request.id, "rejected")}
+                    disabled={updatingRequestId === request.id}
+                  >
+                    Отклонить
+                  </button>
                 </div>
                 <p className="muted">Текущий статус: {request.status}</p>
               </article>
             ))}
+            {message ? <p className={message.includes("Не удалось") || message.includes("ошибка") ? "error-note" : "ok"}>{message}</p> : null}
           </section>
         </>
       )}

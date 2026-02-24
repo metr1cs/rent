@@ -11,6 +11,10 @@ function assert(condition, message) {
 }
 
 async function main() {
+  const runStamp = Date.now();
+  const runPhone = `+79${String(runStamp).slice(-9)}`;
+  const runName = `Smoke Tester ${String(runStamp).slice(-4)}`;
+
   const health = await jsonFetch(`${apiBase}/health`);
   assert(health.ok, "API health failed");
 
@@ -65,8 +69,8 @@ async function main() {
   }
 
   const leadPayload = {
-    name: "Smoke Tester",
-    phone: "+79991234567",
+    name: runName,
+    phone: runPhone,
     comment: "Smoke flow for verified review"
   };
   const lead = await jsonFetch(`${apiBase}/api/venues/${encodeURIComponent(venue.id)}/requests`, {
@@ -91,10 +95,10 @@ async function main() {
   const review = await jsonFetch(`${apiBase}/api/venues/${encodeURIComponent(venue.id)}/reviews`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      author: "Smoke Tester",
-      requesterName: "Smoke Tester",
-      requesterPhone: "+79991234567",
+      body: JSON.stringify({
+      author: runName,
+      requesterName: runName,
+      requesterPhone: runPhone,
       rating: 4,
       text: "Подтверждаю бронирование. Площадка соответствует описанию и требованиям мероприятия."
     })

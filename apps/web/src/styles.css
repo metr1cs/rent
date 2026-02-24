@@ -671,6 +671,11 @@ input[type="number"] {
   background: color-mix(in oklab, var(--brand-a) 15%, var(--surface));
 }
 
+.status-actions .chip:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
 .save-chip {
   border-style: dashed;
 }
