@@ -1,6 +1,7 @@
 import "dotenv/config";
+import crypto from "node:crypto";
 import cors from "cors";
-import express from "express";
+import express, { type Request, type Response } from "express";
 import { z } from "zod";
 import { analyticsEvents, categories, leadRequests, owners, payments, recalculateVenueRating, reviewModerationAudit, reviews, venues } from "./data.js";
 import { initDataStore, persistStateSync } from "./persistence.js";
@@ -15,10 +16,24 @@ const adminNotifyKey = process.env.ADMIN_NOTIFY_KEY ?? "";
 const autoBillingNotifierEnabled = process.env.AUTO_BILLING_NOTIFIER === "true";
 const billingNotifierIntervalMinutes = Number(process.env.BILLING_NOTIFIER_INTERVAL_MINUTES ?? 60);
 const reminderSendRegistry = new Set<string>();
+const adminSessions = new Map<string, { moderator: string; expiresAt: number }>();
+const adminSessionTtlMs = 8 * 60 * 60 * 1000;
 
 app.use(cors());
 app.use(express.json());
 initDataStore();
+
+function requireAdmin(req: Request, res: Response): string | null {
+  const sessionToken = String(req.headers["x-admin-session"] ?? "");
+  if (sessionToken) {
+    const session = adminSessions.get(sessionToken);
+    if (session && session.expiresAt > Date.now()) return session.moderator;
+  }
+  const key = String(req.headers["x-admin-key"] ?? "");
+  if (adminNotifyKey && key === adminNotifyKey) return "admin-key";
+  res.status(403).json({ message: "Forbidden" });
+  return null;
+}
 
 async function sendTelegramNotification(text: string, chatIdOverride?: string): Promise<void> {
   const targetChatId = (chatIdOverride ?? telegramChatId).trim();
@@ -208,9 +223,37 @@ app.post("/api/analytics/event", (req, res) => {
   return res.status(201).json({ ok: true });
 });
 
+const adminAuthSchema = z.object({
+  accessKey: z.string().min(4),
+  moderator: z.string().min(2).max(80).optional()
+});
+
+app.post("/api/admin/auth", (req, res) => {
+  const parsed = adminAuthSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ message: "Invalid auth payload" });
+  if (!adminNotifyKey || parsed.data.accessKey !== adminNotifyKey) return res.status(403).json({ message: "Forbidden" });
+
+  const token = crypto.randomBytes(24).toString("hex");
+  const moderator = parsed.data.moderator ?? "admin";
+  const expiresAt = Date.now() + adminSessionTtlMs;
+  adminSessions.set(token, { moderator, expiresAt });
+  return res.status(201).json({
+    token,
+    moderator,
+    expiresAt: new Date(expiresAt).toISOString()
+  });
+});
+
+app.get("/api/admin/session", (req, res) => {
+  const sessionToken = String(req.headers["x-admin-session"] ?? "");
+  const session = sessionToken ? adminSessions.get(sessionToken) : null;
+  if (!session || session.expiresAt <= Date.now()) return res.status(403).json({ message: "Forbidden" });
+  return res.json({ moderator: session.moderator, expiresAt: new Date(session.expiresAt).toISOString() });
+});
+
 app.get("/api/admin/analytics/funnel", (req, res) => {
-  const key = String(req.headers["x-admin-key"] ?? "");
-  if (!adminNotifyKey || key !== adminNotifyKey) return res.status(403).json({ message: "Forbidden" });
+  const moderator = requireAdmin(req, res);
+  if (!moderator) return;
 
   const counts = {
     homeView: analyticsEvents.filter((item) => item.event === "home_view").length,
@@ -235,8 +278,8 @@ app.get("/api/admin/analytics/funnel", (req, res) => {
 });
 
 app.get("/api/admin/ops/readiness", (req, res) => {
-  const key = String(req.headers["x-admin-key"] ?? "");
-  if (!adminNotifyKey || key !== adminNotifyKey) return res.status(403).json({ message: "Forbidden" });
+  const moderator = requireAdmin(req, res);
+  if (!moderator) return;
 
   const checks = {
     qaSmokeConfigured: true,
@@ -461,8 +504,8 @@ app.post("/api/venues/:id/reviews", (req, res) => {
 });
 
 app.get("/api/admin/reviews", (req, res) => {
-  const key = String(req.headers["x-admin-key"] ?? "");
-  if (!adminNotifyKey || key !== adminNotifyKey) return res.status(403).json({ message: "Forbidden" });
+  const moderator = requireAdmin(req, res);
+  if (!moderator) return;
 
   const status = String(req.query.status ?? "");
   const filtered = status
@@ -485,8 +528,8 @@ const reviewModerationSchema = z.object({
 });
 
 app.post("/api/admin/reviews/:id/moderate", (req, res) => {
-  const key = String(req.headers["x-admin-key"] ?? "");
-  if (!adminNotifyKey || key !== adminNotifyKey) return res.status(403).json({ message: "Forbidden" });
+  const moderator = requireAdmin(req, res);
+  if (!moderator) return;
 
   const parsed = reviewModerationSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ message: "Invalid moderation payload" });
@@ -506,7 +549,7 @@ app.post("/api/admin/reviews/:id/moderate", (req, res) => {
     previousStatus,
     nextStatus: parsed.data.status,
     note: parsed.data.note,
-    moderator: parsed.data.moderator ?? "admin",
+    moderator: parsed.data.moderator ?? moderator,
     createdAt: new Date().toISOString()
   });
   recalculateVenueRating(review.venueId);
@@ -515,8 +558,8 @@ app.post("/api/admin/reviews/:id/moderate", (req, res) => {
 });
 
 app.get("/api/admin/reviews/summary", (req, res) => {
-  const key = String(req.headers["x-admin-key"] ?? "");
-  if (!adminNotifyKey || key !== adminNotifyKey) return res.status(403).json({ message: "Forbidden" });
+  const moderator = requireAdmin(req, res);
+  if (!moderator) return;
 
   const pending = reviews.filter((item) => item.status === "pending");
   const published = reviews.filter((item) => item.status === "published");
@@ -718,10 +761,8 @@ app.post("/api/owner/register", (req, res) => {
 });
 
 app.post("/api/admin/notify/test", (req, res) => {
-  const key = String(req.headers["x-admin-key"] ?? "");
-  if (!adminNotifyKey || key !== adminNotifyKey) {
-    return res.status(403).json({ message: "Forbidden" });
-  }
+  const moderator = requireAdmin(req, res);
+  if (!moderator) return;
 
   void sendTelegramNotification(
     [
@@ -891,8 +932,8 @@ app.get("/api/owner/dashboard", (req, res) => {
 });
 
 app.get("/api/admin/billing/overview", (req, res) => {
-  const key = String(req.headers["x-admin-key"] ?? "");
-  if (!adminNotifyKey || key !== adminNotifyKey) return res.status(403).json({ message: "Forbidden" });
+  const moderator = requireAdmin(req, res);
+  if (!moderator) return;
 
   owners.forEach((item) => ensureOwnerBillingStatus(item.id));
   const debtors = computeDebtors();
@@ -913,8 +954,8 @@ app.get("/api/admin/billing/overview", (req, res) => {
 });
 
 app.post("/api/admin/billing/notify-debtors", (req, res) => {
-  const key = String(req.headers["x-admin-key"] ?? "");
-  if (!adminNotifyKey || key !== adminNotifyKey) return res.status(403).json({ message: "Forbidden" });
+  const moderator = requireAdmin(req, res);
+  if (!moderator) return;
 
   owners.forEach((item) => ensureOwnerBillingStatus(item.id));
   const debtors = computeDebtors();
@@ -941,8 +982,8 @@ app.post("/api/admin/billing/notify-debtors", (req, res) => {
 });
 
 app.post("/api/admin/billing/reminders/run", (req, res) => {
-  const key = String(req.headers["x-admin-key"] ?? "");
-  if (!adminNotifyKey || key !== adminNotifyKey) return res.status(403).json({ message: "Forbidden" });
+  const moderator = requireAdmin(req, res);
+  if (!moderator) return;
 
   const result = runBillingReminderDispatch();
   return res.json({

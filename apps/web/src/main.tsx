@@ -1790,7 +1790,7 @@ function OwnerPage() {
     if (pending > 0) return `У вас ${pending} новых заявок. Рекомендуем ответить в течение 30 минут для лучшей конверсии.`;
     return "Следующий шаг: улучшайте карточки (фото, удобства, описание) для роста конверсии.";
   }, [owner, ownerVenues.length, ownerRequests]);
-  const hasAdminKey = Boolean(localStorage.getItem("vmestoru-admin-key")?.trim());
+  const hasAdminSession = Boolean(localStorage.getItem("vmestoru-admin-session")?.trim());
 
   return (
     <section className="section glass owner-page reveal-on-scroll">
@@ -1847,7 +1847,7 @@ function OwnerPage() {
             <h3>Служебные инструменты</h3>
             <p className="muted">Модерация отзывов и anti-fraud проверка доступны в отдельной панели.</p>
             <Link to="/admin/reviews" className="primary owner-admin-link">Открыть модерацию отзывов</Link>
-            <p className="muted">{hasAdminKey ? "ADMIN_NOTIFY_KEY уже сохранен в браузере." : "Для доступа потребуется ADMIN_NOTIFY_KEY."}</p>
+            <p className="muted">{hasAdminSession ? "Сессия модератора активна в этом браузере." : "Для входа в модерацию потребуется ключ доступа."}</p>
           </div>
 
           <form className="owner-venue-form" onSubmit={addVenue}>
@@ -2015,7 +2015,9 @@ function OwnerPage() {
 }
 
 function AdminReviewsPage() {
-  const [adminKey, setAdminKey] = useState(() => localStorage.getItem("vmestoru-admin-key") ?? "");
+  const [adminAccessKey, setAdminAccessKey] = useState("");
+  const [adminSession, setAdminSession] = useState(() => localStorage.getItem("vmestoru-admin-session") ?? "");
+  const [adminSessionExpiresAt, setAdminSessionExpiresAt] = useState(() => localStorage.getItem("vmestoru-admin-session-expires-at") ?? "");
   const [moderatorName, setModeratorName] = useState(() => localStorage.getItem("vmestoru-moderator-name") ?? "Moderator");
   const [status, setStatus] = useState("pending");
   const [riskMin, setRiskMin] = useState("0");
@@ -2049,13 +2051,79 @@ function AdminReviewsPage() {
   }, []);
 
   useEffect(() => {
-    if (!adminKey.trim()) return;
+    if (!adminSession.trim()) return;
     void loadReviews(status);
-  }, [status]);
+  }, [status, adminSession]);
+
+  useEffect(() => {
+    if (!adminSession.trim()) return;
+    void verifyAdminSession();
+  }, []);
+
+  function clearAdminSession(nextError = ""): void {
+    setAdminSession("");
+    setAdminSessionExpiresAt("");
+    localStorage.removeItem("vmestoru-admin-session");
+    localStorage.removeItem("vmestoru-admin-session-expires-at");
+    if (nextError) setError(nextError);
+  }
+
+  async function verifyAdminSession(): Promise<void> {
+    try {
+      const response = await fetch(`${API}/api/admin/session`, {
+        headers: { "x-admin-session": adminSession.trim() },
+      });
+      if (!response.ok) {
+        clearAdminSession("Сессия модератора истекла. Войдите заново.");
+        return;
+      }
+      const payload = (await response.json()) as { expiresAt?: string };
+      if (payload.expiresAt) {
+        setAdminSessionExpiresAt(payload.expiresAt);
+        localStorage.setItem("vmestoru-admin-session-expires-at", payload.expiresAt);
+      }
+      void loadSummary();
+    } catch {
+      clearAdminSession("Не удалось проверить сессию модерации.");
+    }
+  }
+
+  async function loginModerator(event: FormEvent): Promise<void> {
+    event.preventDefault();
+    if (!adminAccessKey.trim()) {
+      setError("Введите ключ доступа модератора.");
+      return;
+    }
+    setError("");
+    try {
+      const response = await fetch(`${API}/api/admin/auth`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          accessKey: adminAccessKey.trim(),
+          moderator: moderatorName.trim() || "Moderator",
+        }),
+      });
+      if (!response.ok) {
+        setError(response.status === 403 ? "Неверный ключ доступа." : "Не удалось авторизоваться в модерации.");
+        return;
+      }
+      const payload = (await response.json()) as { token: string; expiresAt: string };
+      setAdminSession(payload.token);
+      setAdminSessionExpiresAt(payload.expiresAt);
+      setAdminAccessKey("");
+      localStorage.setItem("vmestoru-admin-session", payload.token);
+      localStorage.setItem("vmestoru-admin-session-expires-at", payload.expiresAt);
+      await loadReviews(status);
+      await loadSummary();
+    } catch {
+      setError("Ошибка сети при авторизации модератора.");
+    }
+  }
 
   async function loadReviews(nextStatus: string): Promise<void> {
-    if (!adminKey.trim()) {
-      setError("Введите ADMIN_NOTIFY_KEY для доступа к модерации.");
+    if (!adminSession.trim()) {
+      setError("Введите ключ доступа и войдите в модерацию.");
       setReviews([]);
       return;
     }
@@ -2064,10 +2132,14 @@ function AdminReviewsPage() {
     const query = nextStatus ? `?status=${encodeURIComponent(nextStatus)}` : "";
     try {
       const response = await fetch(`${API}/api/admin/reviews${query}`, {
-        headers: { "x-admin-key": adminKey.trim() },
+        headers: { "x-admin-session": adminSession.trim() },
       });
       if (!response.ok) {
-        setError(response.status === 403 ? "Неверный ADMIN_NOTIFY_KEY." : "Не удалось загрузить очередь модерации.");
+        if (response.status === 403) {
+          clearAdminSession("Сессия модератора истекла. Войдите заново.");
+        } else {
+          setError("Не удалось загрузить очередь модерации.");
+        }
         setReviews([]);
       } else {
         setReviews((await response.json()) as AdminReview[]);
@@ -2083,7 +2155,7 @@ function AdminReviewsPage() {
   }
 
   async function moderateReview(reviewId: string, nextStatus: "published" | "hidden"): Promise<void> {
-    if (!adminKey.trim()) return;
+    if (!adminSession.trim()) return;
     setActiveReviewId(reviewId);
     setError("");
     try {
@@ -2091,11 +2163,15 @@ function AdminReviewsPage() {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "x-admin-key": adminKey.trim(),
+          "x-admin-session": adminSession.trim(),
         },
         body: JSON.stringify({ status: nextStatus, note: notes[reviewId] ?? "", moderator: moderatorName.trim() || "Moderator" }),
       });
       if (!response.ok) {
+        if (response.status === 403) {
+          clearAdminSession("Сессия модератора истекла. Войдите заново.");
+          return;
+        }
         const payload = (await response.json().catch(() => ({}))) as { message?: string };
         setError(payload.message ?? "Не удалось выполнить модерацию.");
         return;
@@ -2107,7 +2183,7 @@ function AdminReviewsPage() {
   }
 
   async function moderateBulk(nextStatus: "published" | "hidden"): Promise<void> {
-    if (!adminKey.trim() || selectedIds.length === 0) return;
+    if (!adminSession.trim() || selectedIds.length === 0) return;
     setActiveReviewId("bulk");
     setError("");
     try {
@@ -2117,7 +2193,7 @@ function AdminReviewsPage() {
             method: "POST",
             headers: {
               "Content-Type": "application/json",
-              "x-admin-key": adminKey.trim(),
+              "x-admin-session": adminSession.trim(),
             },
             body: JSON.stringify({ status: nextStatus, note: notes[reviewId] ?? "", moderator: moderatorName.trim() || "Moderator" }),
           })
@@ -2147,19 +2223,19 @@ function AdminReviewsPage() {
   }
 
   function saveAdminKey(event: FormEvent): void {
-    event.preventDefault();
-    const normalized = adminKey.trim();
-    localStorage.setItem("vmestoru-admin-key", normalized);
-    void loadReviews(status);
+    void loginModerator(event);
   }
 
   async function loadSummary(): Promise<void> {
-    if (!adminKey.trim()) return;
+    if (!adminSession.trim()) return;
     try {
       const response = await fetch(`${API}/api/admin/reviews/summary`, {
-        headers: { "x-admin-key": adminKey.trim() },
+        headers: { "x-admin-session": adminSession.trim() },
       });
-      if (!response.ok) return;
+      if (!response.ok) {
+        if (response.status === 403) clearAdminSession("Сессия модератора истекла. Войдите заново.");
+        return;
+      }
       setSummary((await response.json()) as AdminReviewSummary);
     } catch {
       // ignore summary fetch errors
@@ -2180,14 +2256,15 @@ function AdminReviewsPage() {
 
       <form className="admin-key-form" onSubmit={saveAdminKey}>
         <label className="filter-item">
-          <span>ADMIN_NOTIFY_KEY</span>
+          <span>Ключ доступа</span>
           <input
-            value={adminKey}
-            onChange={(e) => setAdminKey(e.target.value)}
-            placeholder="Введите ключ из apps/api/.env"
+            value={adminAccessKey}
+            onChange={(e) => setAdminAccessKey(e.target.value)}
+            placeholder="Введите ключ модератора"
           />
         </label>
-        <button type="submit" className="primary">Подключить</button>
+        <button type="submit" className="primary">Войти</button>
+        {adminSessionExpiresAt ? <span className="muted">Сессия до {new Date(adminSessionExpiresAt).toLocaleString("ru-RU")}</span> : null}
       </form>
       <div className="admin-filters">
         <label className="filter-item">
