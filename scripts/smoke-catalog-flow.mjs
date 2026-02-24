@@ -22,17 +22,68 @@ async function main() {
     throw new Error("No categories returned by API");
   }
 
-  const categoryName = categories[0].name;
-  const categorySlug = categoryToSlug(categoryName);
-  const venuesRes = await assertOk(
+  let categoryName = categories[0].name;
+  let venuesRes = await assertOk(
     `${apiBase}/api/venues?category=${encodeURIComponent(categoryName)}`,
     "Category venues"
   );
-  const venues = await venuesRes.json();
+  let venues = await venuesRes.json();
+
   if (!Array.isArray(venues) || venues.length === 0) {
-    throw new Error(`No venues for category: ${categoryName}`);
+    const stamp = Date.now();
+    const register = await fetch(`${apiBase}/api/owner/register`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        name: "Smoke Owner",
+        email: `smoke_catalog_${stamp}@example.com`,
+        password: "password123"
+      })
+    });
+    if (!register.ok) throw new Error("Failed to register owner for empty store");
+    const owner = (await register.json()).owner;
+
+    const checkout = await fetch(`${apiBase}/api/owner/subscription/checkout`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ownerId: owner.id })
+    });
+    if (!checkout.ok) throw new Error("Failed to activate owner subscription");
+
+    const createVenue = await fetch(`${apiBase}/api/owner/venues`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        ownerId: owner.id,
+        title: "Smoke Venue Catalog",
+        region: "Республика Коми",
+        city: "Ухта",
+        address: "Ухта, ул. Тестовая, 1",
+        category: categoryName,
+        capacity: 80,
+        pricePerHour: 5000,
+        description: "Smoke venue for catalog flow in empty data store",
+        amenities: ["Wi-Fi", "Проектор", "Звук", "Парковка"],
+        images: [
+          "https://images.unsplash.com/photo-1519167758481-83f550bb49b3?auto=format&fit=crop&w=1400&q=80",
+          "https://images.unsplash.com/photo-1497366754035-f200968a6e72?auto=format&fit=crop&w=1400&q=80",
+          "https://images.unsplash.com/photo-1505373877841-8d25f7d46678?auto=format&fit=crop&w=1400&q=80"
+        ]
+      })
+    });
+    if (!createVenue.ok) throw new Error("Failed to create smoke venue for catalog flow");
+
+    venuesRes = await assertOk(
+      `${apiBase}/api/venues?category=${encodeURIComponent(categoryName)}`,
+      "Category venues after seed"
+    );
+    venues = await venuesRes.json();
+    if (!Array.isArray(venues) || venues.length === 0) {
+      throw new Error(`No venues for category after seed: ${categoryName}`);
+    }
   }
 
+  const categorySlug = categoryToSlug(categoryName);
   const venueId = venues[0].id;
   await assertOk(`${apiBase}/api/venues/${encodeURIComponent(venueId)}`, "Venue card");
   await assertOk(`${webBase}/catalog`, "Web catalog route");

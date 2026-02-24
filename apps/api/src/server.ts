@@ -10,6 +10,7 @@ const port = Number(process.env.PORT ?? 8090);
 const host = process.env.HOST;
 const telegramBotToken = process.env.TELEGRAM_BOT_TOKEN ?? "";
 const telegramChatId = process.env.TELEGRAM_CHAT_ID ?? "";
+const supportTelegramChatId = process.env.SUPPORT_TELEGRAM_CHAT_ID ?? telegramChatId;
 const adminNotifyKey = process.env.ADMIN_NOTIFY_KEY ?? "";
 const autoBillingNotifierEnabled = process.env.AUTO_BILLING_NOTIFIER === "true";
 const billingNotifierIntervalMinutes = Number(process.env.BILLING_NOTIFIER_INTERVAL_MINUTES ?? 60);
@@ -19,14 +20,15 @@ app.use(cors());
 app.use(express.json());
 initDataStore();
 
-async function sendTelegramNotification(text: string): Promise<void> {
-  if (!telegramBotToken || !telegramChatId) return;
+async function sendTelegramNotification(text: string, chatIdOverride?: string): Promise<void> {
+  const targetChatId = (chatIdOverride ?? telegramChatId).trim();
+  if (!telegramBotToken || !targetChatId) return;
   try {
     await fetch(`https://api.telegram.org/bot${telegramBotToken}/sendMessage`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        chat_id: telegramChatId,
+        chat_id: targetChatId,
         text,
         disable_web_page_preview: true
       })
@@ -516,6 +518,33 @@ const leadSchema = z.object({
   comment: z.string().max(800).default("")
 });
 
+const supportRequestSchema = z.object({
+  name: z.string().min(2),
+  phone: z.string().min(6),
+  message: z.string().min(5).max(2000),
+  page: z.string().max(400).optional()
+});
+
+app.post("/api/support/requests", (req, res) => {
+  const parsed = supportRequestSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ message: "Invalid support payload" });
+
+  const createdAt = new Date().toISOString();
+  void sendTelegramNotification(
+    [
+      "Новый запрос в поддержку",
+      `Имя: ${parsed.data.name}`,
+      `Телефон: ${parsed.data.phone}`,
+      `Страница: ${parsed.data.page || "-"}`,
+      `Сообщение: ${parsed.data.message}`,
+      `Дата: ${new Date(createdAt).toLocaleString("ru-RU")}`
+    ].join("\n"),
+    supportTelegramChatId
+  );
+
+  return res.status(201).json({ message: "Запрос отправлен в поддержку. Мы свяжемся с вами в ближайшее время." });
+});
+
 app.post("/api/venues/:id/requests", (req, res) => {
   const venue = venues.find((item) => item.id === req.params.id);
   if (!venue) return res.status(404).json({ message: "Venue not found" });
@@ -891,12 +920,42 @@ app.post("/api/owner/venues", (req, res) => {
     instantBooking: false,
     metroMinutes: 10,
     cancellationPolicy: "Бесплатная отмена за 48 часов",
-    phone: "+7 (999) 000-00-00"
+    phone: "+7 (995) 592-62-60"
   };
 
   venues.push(created);
   persistStateSync();
   return res.status(201).json(created);
+});
+
+const ownerDeleteVenueSchema = z.object({
+  ownerId: z.string().min(2)
+});
+
+app.delete("/api/owner/venues/:id", (req, res) => {
+  const parsed = ownerDeleteVenueSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ message: "Invalid delete payload" });
+
+  const venueIndex = venues.findIndex((item) => item.id === req.params.id);
+  if (venueIndex < 0) return res.status(404).json({ message: "Venue not found" });
+
+  const venue = venues[venueIndex];
+  if (venue.ownerId !== parsed.data.ownerId) return res.status(403).json({ message: "Forbidden" });
+
+  venues.splice(venueIndex, 1);
+
+  for (let i = reviews.length - 1; i >= 0; i -= 1) {
+    if (reviews[i].venueId === req.params.id) reviews.splice(i, 1);
+  }
+  for (let i = leadRequests.length - 1; i >= 0; i -= 1) {
+    if (leadRequests[i].venueId === req.params.id) leadRequests.splice(i, 1);
+  }
+  for (let i = reviewModerationAudit.length - 1; i >= 0; i -= 1) {
+    if (reviewModerationAudit[i].venueId === req.params.id) reviewModerationAudit.splice(i, 1);
+  }
+
+  persistStateSync();
+  return res.json({ message: "Площадка удалена" });
 });
 
 const aiSearchSchema = z.object({ query: z.string().min(3) });

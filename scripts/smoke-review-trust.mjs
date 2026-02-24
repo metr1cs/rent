@@ -15,8 +15,53 @@ async function main() {
   assert(health.ok, "API health failed");
 
   const venues = await jsonFetch(`${apiBase}/api/venues`);
-  assert(venues.ok && Array.isArray(venues.data) && venues.data.length > 0, "No venues");
-  const venue = venues.data[0];
+  let venue = venues.ok && Array.isArray(venues.data) && venues.data.length > 0 ? venues.data[0] : null;
+
+  if (!venue) {
+    const stamp = Date.now();
+    const register = await jsonFetch(`${apiBase}/api/owner/register`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        name: "Smoke Trust Owner",
+        email: `smoke_trust_${stamp}@example.com`,
+        password: "password123"
+      })
+    });
+    assert(register.ok, "Failed to register owner for trust flow");
+    const owner = register.data.owner;
+
+    const checkout = await jsonFetch(`${apiBase}/api/owner/subscription/checkout`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ownerId: owner.id })
+    });
+    assert(checkout.ok, "Failed to activate owner subscription for trust flow");
+
+    const createVenue = await jsonFetch(`${apiBase}/api/owner/venues`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        ownerId: owner.id,
+        title: "Smoke Venue Trust",
+        region: "Республика Коми",
+        city: "Ухта",
+        address: "Ухта, ул. Тестовая, 2",
+        category: "Лофт",
+        capacity: 50,
+        pricePerHour: 4500,
+        description: "Smoke venue for trust flow in empty data store",
+        amenities: ["Wi-Fi", "Проектор", "Звук", "Парковка"],
+        images: [
+          "https://images.unsplash.com/photo-1519167758481-83f550bb49b3?auto=format&fit=crop&w=1400&q=80",
+          "https://images.unsplash.com/photo-1497366754035-f200968a6e72?auto=format&fit=crop&w=1400&q=80",
+          "https://images.unsplash.com/photo-1505373877841-8d25f7d46678?auto=format&fit=crop&w=1400&q=80"
+        ]
+      })
+    });
+    assert(createVenue.ok, "Failed to create venue for trust flow");
+    venue = createVenue.data;
+  }
 
   const leadPayload = {
     name: "Smoke Tester",

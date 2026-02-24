@@ -368,7 +368,7 @@ function Header({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: () => v
       <nav className="nav">
         <NavLink to="/catalog">Каталог</NavLink>
         <a href="/#how-it-works">Как это работает</a>
-        <a href="mailto:hello@vmestoru.ru">Поддержка</a>
+        <a href="/#support">Поддержка</a>
       </nav>
 
       <div className="header-actions">
@@ -1491,9 +1491,9 @@ function OwnerPage() {
     pricePerHour: "5000",
     description: "",
     amenities: "Wi-Fi, Проектор, Звук",
-    images:
-      "https://images.unsplash.com/photo-1519167758481-83f550bb49b3?auto=format&fit=crop&w=1400&q=80, https://images.unsplash.com/photo-1497366754035-f200968a6e72?auto=format&fit=crop&w=1400&q=80, https://images.unsplash.com/photo-1505373877841-8d25f7d46678?auto=format&fit=crop&w=1400&q=80"
+    images: [] as string[]
   });
+  const [photoUrlInput, setPhotoUrlInput] = useState("");
 
   async function auth(event: FormEvent): Promise<void> {
     event.preventDefault();
@@ -1568,8 +1568,7 @@ function OwnerPage() {
   async function addVenue(event: FormEvent): Promise<void> {
     event.preventDefault();
     if (!owner) return;
-    const images = venueForm.images.split(",").map((item) => item.trim()).filter(Boolean);
-    if (images.length < 3) {
+    if (venueForm.images.length < 3) {
       setMessage("Добавьте минимум 3 фотографии площадки");
       return;
     }
@@ -1588,7 +1587,7 @@ function OwnerPage() {
         pricePerHour: Number(venueForm.pricePerHour),
         description: venueForm.description,
         amenities: venueForm.amenities.split(",").map((item) => item.trim()).filter(Boolean),
-        images,
+        images: venueForm.images,
       })
     });
 
@@ -1599,9 +1598,76 @@ function OwnerPage() {
     }
 
     setMessage("Площадка добавлена");
-    setVenueForm({ ...venueForm, title: "", address: "", description: "" });
+    setVenueForm({
+      ...venueForm,
+      title: "",
+      address: "",
+      description: "",
+      images: []
+    });
+    setPhotoUrlInput("");
     await loadOwnerVenues(owner.id);
     await loadOwnerDashboard(owner.id);
+  }
+
+  function addPhotoToVenue(): void {
+    const normalized = photoUrlInput.trim();
+    if (!normalized) return;
+    try {
+      const parsed = new URL(normalized);
+      if (!["http:", "https:"].includes(parsed.protocol)) {
+        setMessage("Ссылка на фото должна начинаться с http или https");
+        return;
+      }
+    } catch {
+      setMessage("Некорректная ссылка на фото");
+      return;
+    }
+
+    if (venueForm.images.includes(normalized)) {
+      setMessage("Это фото уже добавлено");
+      return;
+    }
+
+    setVenueForm((prev) => ({ ...prev, images: [...prev.images, normalized] }));
+    setPhotoUrlInput("");
+    setMessage("");
+  }
+
+  function removePhotoFromVenue(index: number): void {
+    setVenueForm((prev) => ({ ...prev, images: prev.images.filter((_, i) => i !== index) }));
+  }
+
+  function promotePhoto(index: number): void {
+    setVenueForm((prev) => {
+      if (index <= 0 || index >= prev.images.length) return prev;
+      const next = [...prev.images];
+      const [picked] = next.splice(index, 1);
+      next.unshift(picked);
+      return { ...prev, images: next };
+    });
+  }
+
+  async function deleteVenue(venueId: string): Promise<void> {
+    if (!owner) return;
+    const confirmed = window.confirm("Удалить площадку? Действие необратимо.");
+    if (!confirmed) return;
+
+    const response = await fetch(`${API}/api/owner/venues/${encodeURIComponent(venueId)}`, {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ownerId: owner.id })
+    });
+    const payload = (await response.json().catch(() => ({}))) as { message?: string };
+    if (!response.ok) {
+      setMessage(payload.message ?? "Не удалось удалить площадку");
+      return;
+    }
+
+    setMessage("Площадка удалена");
+    await loadOwnerVenues(owner.id);
+    await loadOwnerDashboard(owner.id);
+    await loadOwnerRequests(owner.id, requestStatusFilter, requestSlaFilter, requestQuery);
   }
 
   async function updateLeadStatus(requestId: string, status: OwnerLead["status"]): Promise<void> {
@@ -1699,27 +1765,77 @@ function OwnerPage() {
 
           <form className="owner-venue-form" onSubmit={addVenue}>
             <h3>Добавить площадку (можно несколько)</h3>
-            <input placeholder="Название" value={venueForm.title} onChange={(e) => setVenueForm({ ...venueForm, title: e.target.value })} required />
-            <input placeholder="Адрес" value={venueForm.address} onChange={(e) => setVenueForm({ ...venueForm, address: e.target.value })} required />
+            <label className="filter-item">
+              <span>Название площадки</span>
+              <input value={venueForm.title} onChange={(e) => setVenueForm({ ...venueForm, title: e.target.value })} placeholder="Например: Loft Aurora" required />
+            </label>
+            <label className="filter-item">
+              <span>Полный адрес</span>
+              <input value={venueForm.address} onChange={(e) => setVenueForm({ ...venueForm, address: e.target.value })} placeholder="Улица, дом, ориентир" required />
+            </label>
             <div className="three-cols">
-              <select value={venueForm.region} onChange={(e) => setVenueForm({ ...venueForm, region: e.target.value, city: e.target.value })}>
-                <option value="Москва">Москва</option>
-                <option value="Санкт-Петербург">Санкт-Петербург</option>
-                <option value="Казань">Казань</option>
-                <option value="Екатеринбург">Екатеринбург</option>
-                <option value="Новосибирск">Новосибирск</option>
-              </select>
-              <input type="number" min="1" placeholder="Вместимость" value={venueForm.capacity} onChange={(e) => setVenueForm({ ...venueForm, capacity: e.target.value })} />
-              <input type="number" min="1" placeholder="Цена/час" value={venueForm.pricePerHour} onChange={(e) => setVenueForm({ ...venueForm, pricePerHour: e.target.value })} />
+              <label className="filter-item">
+                <span>Регион</span>
+                <input
+                  value={venueForm.region}
+                  onChange={(e) => setVenueForm({ ...venueForm, region: e.target.value })}
+                  placeholder="Например: Республика Коми"
+                />
+              </label>
+              <label className="filter-item">
+                <span>Город</span>
+                <input
+                  value={venueForm.city}
+                  onChange={(e) => setVenueForm({ ...venueForm, city: e.target.value })}
+                  placeholder="Например: Ухта"
+                />
+              </label>
+              <label className="filter-item">
+                <span>Вместимость</span>
+                <input type="number" min="1" value={venueForm.capacity} onChange={(e) => setVenueForm({ ...venueForm, capacity: e.target.value })} />
+              </label>
+              <label className="filter-item">
+                <span>Цена за час (₽)</span>
+                <input type="number" min="1" value={venueForm.pricePerHour} onChange={(e) => setVenueForm({ ...venueForm, pricePerHour: e.target.value })} />
+              </label>
             </div>
-            <input placeholder="Категория (например Лофт)" value={venueForm.category} onChange={(e) => setVenueForm({ ...venueForm, category: e.target.value })} />
-            <textarea placeholder="Описание" value={venueForm.description} onChange={(e) => setVenueForm({ ...venueForm, description: e.target.value })} required />
-            <input placeholder="Удобства через запятую" value={venueForm.amenities} onChange={(e) => setVenueForm({ ...venueForm, amenities: e.target.value })} />
-            <input
-              placeholder="URL фото через запятую (минимум 3)"
-              value={venueForm.images}
-              onChange={(e) => setVenueForm({ ...venueForm, images: e.target.value })}
-            />
+            <label className="filter-item">
+              <span>Категория</span>
+              <input value={venueForm.category} onChange={(e) => setVenueForm({ ...venueForm, category: e.target.value })} placeholder="Например: Лофт" />
+            </label>
+            <label className="filter-item">
+              <span>Описание</span>
+              <textarea value={venueForm.description} onChange={(e) => setVenueForm({ ...venueForm, description: e.target.value })} placeholder="Опишите формат, преимущества, ограничения" required />
+            </label>
+            <label className="filter-item">
+              <span>Удобства (через запятую)</span>
+              <input value={venueForm.amenities} onChange={(e) => setVenueForm({ ...venueForm, amenities: e.target.value })} placeholder="Wi-Fi, Проектор, Звук, Парковка" />
+            </label>
+            <div className="photo-builder">
+              <label className="filter-item">
+                <span>Добавить фотографию по ссылке</span>
+                <input
+                  value={photoUrlInput}
+                  onChange={(e) => setPhotoUrlInput(e.target.value)}
+                  placeholder="https://..."
+                />
+              </label>
+              <button type="button" className="chip" onClick={addPhotoToVenue}>Добавить фото</button>
+            </div>
+            <p className="muted">Фото добавлено: {venueForm.images.length} (минимум 3). Первое фото будет обложкой.</p>
+            <div className="photo-preview-grid">
+              {venueForm.images.map((image, index) => (
+                <article key={`${image}-${index}`} className="photo-preview-card">
+                  <img src={image} alt={`Фото площадки ${index + 1}`} />
+                  <div className="photo-preview-actions">
+                    <button type="button" className="chip" onClick={() => promotePhoto(index)} disabled={index === 0}>
+                      {index === 0 ? "Обложка" : "Сделать обложкой"}
+                    </button>
+                    <button type="button" className="ghost-btn" onClick={() => removePhotoFromVenue(index)}>Удалить</button>
+                  </div>
+                </article>
+              ))}
+            </div>
             <button type="submit" className="primary">Добавить площадку</button>
           </form>
 
@@ -1734,6 +1850,7 @@ function OwnerPage() {
                     <p><span className="category-pill">{venue.category}</span></p>
                     <p>{venue.address}</p>
                     <span className="rating-corner">★ {venue.rating}</span>
+                    <button type="button" className="ghost-btn owner-delete-btn" onClick={() => void deleteVenue(venue.id)}>Удалить</button>
                   </div>
                 </article>
               ))}
@@ -2142,18 +2259,27 @@ function PrivacyPage() {
     <section className="section glass legal-page reveal-on-scroll">
       <h1>Политика конфиденциальности</h1>
       <p>
-        Сервис VmestoRu обрабатывает персональные данные пользователей для работы поиска площадок, заявок арендодателям и
-        улучшения качества сервиса.
+        Настоящая политика описывает, как сервис VmestoRu собирает, использует, хранит и защищает персональные данные
+        пользователей в соответствии с требованиями законодательства РФ.
       </p>
-      <h3>Какие данные мы собираем</h3>
-      <p>Имя, email, телефон, технические данные устройства, cookies и действия на сайте.</p>
-      <h3>Для чего используется информация</h3>
-      <p>Для подбора площадок, обратной связи, обеспечения безопасности и аналитики продукта.</p>
-      <h3>Передача данных</h3>
-      <p>Данные передаются только в рамках законодательства РФ и только сервисам, участвующим в работе платформы.</p>
-      <h3>Cookies</h3>
-      <p>Мы используем cookies для сохранения темы, улучшения UX и корректной работы личного кабинета арендодателя.</p>
-      <p>По вопросам обработки данных: privacy@vmestoru.ru</p>
+      <h3>1. Какие данные мы обрабатываем</h3>
+      <p>Имя, телефон, email (если указан), тексты заявок и обращений, технические данные устройства, cookies, действия в интерфейсе.</p>
+      <h3>2. Цели обработки</h3>
+      <p>Подбор площадок, передача заявок арендодателям, поддержка пользователей, предотвращение злоупотреблений, аналитика качества сервиса.</p>
+      <h3>3. Правовые основания</h3>
+      <p>Обработка выполняется на основании согласия пользователя, исполнения пользовательского запроса и законных интересов оператора.</p>
+      <h3>4. Передача третьим лицам</h3>
+      <p>Данные передаются только тем лицам и сервисам, которые участвуют в оказании услуги: арендодателям, хостинг-провайдерам, Telegram API (для поддержки и уведомлений).</p>
+      <h3>5. Сроки хранения</h3>
+      <p>Данные хранятся не дольше, чем это требуется для целей обработки и выполнения обязательств по заявке, если более длительный срок не установлен законом.</p>
+      <h3>6. Права пользователя</h3>
+      <p>Пользователь вправе запросить уточнение, обновление, ограничение или удаление своих данных, а также отозвать согласие на обработку.</p>
+      <h3>7. Cookies</h3>
+      <p>Cookies используются для сохранения настроек интерфейса, стабильной работы сайта и аналитики пользовательских сценариев.</p>
+      <h3>8. Безопасность</h3>
+      <p>Мы применяем организационные и технические меры защиты, включая ограничение доступа, журналирование административных действий и шифрование трафика (HTTPS).</p>
+      <h3>9. Контакты оператора</h3>
+      <p>По вопросам персональных данных и конфиденциальности: +7 (995) 592-62-60, Telegram поддержки и форма обращения в разделе “Поддержка”.</p>
     </section>
   );
 }
@@ -2220,12 +2346,33 @@ function CookieBanner() {
 }
 
 function Footer() {
+  const [supportForm, setSupportForm] = useState({ name: "", phone: "", message: "" });
+  const [supportMessage, setSupportMessage] = useState("");
+
+  async function sendSupportRequest(event: FormEvent): Promise<void> {
+    event.preventDefault();
+    setSupportMessage("");
+    const response = await fetch(`${API}/api/support/requests`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ...supportForm, page: window.location.pathname })
+    });
+    const payload = (await response.json().catch(() => ({}))) as { message?: string };
+    if (!response.ok) {
+      setSupportMessage(payload.message ?? "Не удалось отправить запрос. Попробуйте позже.");
+      return;
+    }
+    setSupportMessage(payload.message ?? "Запрос отправлен.");
+    setSupportForm({ name: "", phone: "", message: "" });
+  }
+
   return (
     <footer id="support" className="footer glass">
       <div className="footer-grid">
         <div>
           <strong>VmestoRu</strong>
           <p>Премиальная платформа аренды площадок под мероприятия.</p>
+          <p>Контактный номер: <strong>+7 (995) 592-62-60</strong></p>
         </div>
         <div>
           <h4>Навигация</h4>
@@ -2235,10 +2382,36 @@ function Footer() {
         </div>
         <div>
           <h4>Контакты</h4>
-          <p>+7 (900) 123-45-67</p>
-          <p>hello@vmestoru.ru</p>
+          <p>+7 (995) 592-62-60</p>
+          <p><a href="https://t.me/vmestoru_support" target="_blank" rel="noreferrer">Telegram поддержка</a></p>
         </div>
       </div>
+      <form className="support-form" onSubmit={sendSupportRequest}>
+        <h4>Написать в поддержку</h4>
+        <p className="muted">Обращение отправляется напрямую в Telegram-группу поддержки.</p>
+        <div className="support-grid">
+          <input
+            placeholder="Ваше имя"
+            value={supportForm.name}
+            onChange={(e) => setSupportForm({ ...supportForm, name: e.target.value })}
+            required
+          />
+          <input
+            placeholder="Телефон"
+            value={supportForm.phone}
+            onChange={(e) => setSupportForm({ ...supportForm, phone: e.target.value })}
+            required
+          />
+        </div>
+        <textarea
+          placeholder="Опишите вопрос или проблему"
+          value={supportForm.message}
+          onChange={(e) => setSupportForm({ ...supportForm, message: e.target.value })}
+          required
+        />
+        <button type="submit" className="primary">Отправить в поддержку</button>
+        {supportMessage ? <p className="ok">{supportMessage}</p> : null}
+      </form>
       <p className="footer-copy">© {new Date().getFullYear()} VmestoRu. Все права защищены.</p>
     </footer>
   );

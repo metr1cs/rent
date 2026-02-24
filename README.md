@@ -26,6 +26,7 @@ API умеет отправлять уведомления в Telegram при:
 Переменные окружения для API:
 - `TELEGRAM_BOT_TOKEN`
 - `TELEGRAM_CHAT_ID`
+- `SUPPORT_TELEGRAM_CHAT_ID` (опционально, отдельный чат/группа для поддержки)
 - `ADMIN_NOTIFY_KEY` (для защищенного тестового endpoint)
 
 Пример файла: `apps/api/.env.example`
@@ -102,6 +103,10 @@ DATA_STORE_FILE=/absolute/path/to/store.json npm run start -w apps/api
 npm run smoke:catalog
 npm run smoke:trust
 ```
+
+## Поддержка и управление площадками
+- Поддержка из сайта отправляется в Telegram через `POST /api/support/requests`.
+- Удаление площадки арендодателем: `DELETE /api/owner/venues/:id` (с `ownerId` в body).
 
 ## AI Team demo
 ```bash
