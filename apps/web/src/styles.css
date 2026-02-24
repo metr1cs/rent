@@ -98,6 +98,12 @@ body {
 .brand { display: flex; gap: 10px; align-items: center; }
 .brand-link { text-decoration: none; color: inherit; width: fit-content; }
 .brand-link:hover strong { opacity: 0.92; }
+.brand-logo {
+  width: 34px;
+  height: 34px;
+  border-radius: 9px;
+  box-shadow: 0 0 0 6px color-mix(in oklab, var(--brand-a) 12%, transparent);
+}
 .brand-dot {
   width: 16px; height: 16px; border-radius: 6px;
   background: linear-gradient(135deg, var(--brand-a), var(--brand-b));
@@ -1340,6 +1346,21 @@ input[type="number"] {
 
 .footer a:hover {
   color: var(--text);
+}
+
+.footer-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  text-decoration: none;
+  color: var(--text);
+  margin-bottom: 6px;
+}
+
+.footer-brand-logo {
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
 }
 
 .footer-copy {

@@ -389,7 +389,7 @@ function Header({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: () => v
   return (
     <header className="header glass">
       <Link to="/" className="brand brand-link" aria-label="VmestoRu — на главную">
-        <span className="brand-dot" />
+        <img src="/favicon.svg" alt="Логотип VmestoRu" className="brand-logo" width={34} height={34} />
         <div>
           <strong>VmestoRu</strong>
           <p>Премиальная аренда площадок для мероприятий</p>
@@ -2582,7 +2582,10 @@ function Footer() {
     <footer id="support" className="footer glass">
       <div className="footer-grid">
         <div>
-          <strong>VmestoRu</strong>
+          <Link to="/" className="footer-brand" aria-label="VmestoRu — на главную">
+            <img src="/favicon.svg" alt="Логотип VmestoRu" className="footer-brand-logo" width={28} height={28} />
+            <strong>VmestoRu</strong>
+          </Link>
           <p>Премиальная платформа аренды площадок под мероприятия.</p>
         </div>
         <div>

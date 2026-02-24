@@ -90,6 +90,12 @@ curl "http://localhost:8090/api/admin/reviews/summary" -H "x-admin-key: YOUR_ADM
 npm run build
 ```
 
+## Engineering Process
+- Playbook: `docs/ENGINEERING_PLAYBOOK.md`
+- Release checklist: `docs/RELEASE_CHECKLIST.md`
+- PR template: `.github/pull_request_template.md`
+- Production deploy workflow: `.github/workflows/deploy.yml`
+
 ## Хранение данных API (персистентность)
 - API сохраняет runtime-данные в JSON-файл между рестартами.
 - По умолчанию файл: `apps/api/data/store.json`
