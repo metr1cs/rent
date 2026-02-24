@@ -66,6 +66,8 @@ type Owner = {
   id: string;
   name: string;
   email: string;
+  trialEndsAt: string;
+  trialStatus: "active" | "expired";
   subscriptionStatus: "inactive" | "active";
   nextBillingDate: string | null;
 };
@@ -102,6 +104,11 @@ type OwnerLead = {
 };
 type OwnerDashboard = {
   ownerId: string;
+  trial: {
+    status: "active" | "expired";
+    endsAt: string;
+    daysLeft: number;
+  } | null;
   metrics: {
     venuesTotal: number;
     leadsTotal: number;
@@ -152,6 +159,28 @@ const CATEGORY_ART_ORDER = [
   "Шоурум / pop-up",
   "Универсальный зал",
 ];
+const CATEGORY_STOCK_IMAGES: Record<string, string> = {
+  "Лофт": "https://images.unsplash.com/photo-1524758631624-e2822e304c36?auto=format&fit=crop&w=1400&q=80",
+  "Банкетный зал": "https://images.unsplash.com/photo-1464366400600-7168b8af9bc3?auto=format&fit=crop&w=1400&q=80",
+  "Ресторан для мероприятий": "https://images.unsplash.com/photo-1559339352-11d035aa65de?auto=format&fit=crop&w=1400&q=80",
+  "Конференц-зал": "https://images.unsplash.com/photo-1517502884422-41eaead166d4?auto=format&fit=crop&w=1400&q=80",
+  "Переговорная": "https://images.unsplash.com/photo-1497366811353-6870744d04b2?auto=format&fit=crop&w=1400&q=80",
+  "Фотостудия": "https://images.unsplash.com/photo-1493863641943-9b68992a8d07?auto=format&fit=crop&w=1400&q=80",
+  "Видеостудия / подкаст": "https://images.unsplash.com/photo-1590602847861-f357a9332bbc?auto=format&fit=crop&w=1400&q=80",
+  "Коворкинг / event-space": "https://images.unsplash.com/photo-1497366216548-37526070297c?auto=format&fit=crop&w=1400&q=80",
+  "Выставочный зал": "https://images.unsplash.com/photo-1531058020387-3be344556be6?auto=format&fit=crop&w=1400&q=80",
+  "Арт-пространство": "https://images.unsplash.com/photo-1577083552431-6e5fd01988f1?auto=format&fit=crop&w=1400&q=80",
+  "Концертная площадка": "https://images.unsplash.com/photo-1503095396549-807759245b35?auto=format&fit=crop&w=1400&q=80",
+  "Театр / сцена": "https://images.unsplash.com/photo-1507924538820-ede94a04019d?auto=format&fit=crop&w=1400&q=80",
+  "Спортзал / танцевальный": "https://images.unsplash.com/photo-1518611012118-696072aa579a?auto=format&fit=crop&w=1400&q=80",
+  "Детское пространство": "https://images.unsplash.com/photo-1516627145497-ae6968895b74?auto=format&fit=crop&w=1400&q=80",
+  "Коттедж / загородный дом": "https://images.unsplash.com/photo-1568605114967-8130f3a36994?auto=format&fit=crop&w=1400&q=80",
+  "База отдыха": "https://images.unsplash.com/photo-1507525428034-b723cf961d3e?auto=format&fit=crop&w=1400&q=80",
+  "Терраса / rooftop": "https://images.unsplash.com/photo-1489515217757-5fd1be406fef?auto=format&fit=crop&w=1400&q=80",
+  "Теплоход / яхта": "https://images.unsplash.com/photo-1569263979104-865ab7cd8d13?auto=format&fit=crop&w=1400&q=80",
+  "Шоурум / pop-up": "https://images.unsplash.com/photo-1441986300917-64674bd600d8?auto=format&fit=crop&w=1400&q=80",
+  "Универсальный зал": "https://images.unsplash.com/photo-1519167758481-83f550bb49b3?auto=format&fit=crop&w=1400&q=80",
+};
 
 function upsertMetaTag(
   key: "name" | "property",
@@ -257,6 +286,8 @@ function slugToCategory(value: string): string {
 }
 
 function categoryWebpArt(name: string): string {
+  const stockImage = CATEGORY_STOCK_IMAGES[name];
+  if (stockImage) return stockImage;
   const index = CATEGORY_ART_ORDER.findIndex((item) => item === name);
   if (index < 0) return DEFAULT_OG_IMAGE;
   return `/catalog-art/c${String(index + 1).padStart(2, "0")}.webp`;
@@ -442,6 +473,16 @@ function HomePage() {
   const [aiMessage, setAiMessage] = useState("");
 
   const regions = useMemo(() => [...new Set(allVenues.map((item) => item.region))], [allVenues]);
+  const homeCategoryCards = useMemo(
+    () =>
+      categories.map((item) => ({
+        id: item.id,
+        name: item.name,
+        image: categoryWebpArt(item.name),
+        count: allVenues.filter((venue) => venue.category === item.name).length,
+      })),
+    [categories, allVenues]
+  );
 
   useEffect(() => {
     void bootstrap();
@@ -533,6 +574,39 @@ function HomePage() {
               name: item.name,
               url: `${SITE_URL}/category/${categoryToSlug(item.name)}`,
             })),
+          },
+        },
+        {
+          id: "home-faq",
+          payload: {
+            "@context": "https://schema.org",
+            "@type": "FAQPage",
+            mainEntity: [
+              {
+                "@type": "Question",
+                name: "Как добавить площадку на VmestoRu?",
+                acceptedAnswer: {
+                  "@type": "Answer",
+                  text: "Зарегистрируйтесь как арендодатель, заполните карточку площадки и добавьте минимум 3 фотографии.",
+                },
+              },
+              {
+                "@type": "Question",
+                name: "Есть ли пробный период для новых арендодателей?",
+                acceptedAnswer: {
+                  "@type": "Answer",
+                  text: "Да, новые арендодатели получают бесплатный доступ на 3 месяца с момента регистрации.",
+                },
+              },
+              {
+                "@type": "Question",
+                name: "Как связаться с поддержкой?",
+                acceptedAnswer: {
+                  "@type": "Answer",
+                  text: "Используйте форму поддержки на сайте: обращение сразу отправляется в Telegram-команду поддержки.",
+                },
+              },
+            ],
           },
         },
       ],
@@ -832,6 +906,24 @@ function HomePage() {
         ) : null}
       </section>
 
+      <section className="section glass reveal-on-scroll">
+        <div className="row-between">
+          <h2>Категории площадок</h2>
+          <span>{homeCategoryCards.length} направлений</span>
+        </div>
+        <div className="category-grid">
+          {homeCategoryCards.map((item) => (
+            <Link key={item.id} className="category-tile" to={`/category/${categoryToSlug(item.name)}`}>
+              <img src={item.image} alt={item.name} loading="lazy" />
+              <div className="category-tile-body">
+                <h3>{item.name}</h3>
+                <p>{item.count} вариантов</p>
+              </div>
+            </Link>
+          ))}
+        </div>
+      </section>
+
       {featured.map((group) => (
         <section key={group.id} className="section glass reveal-on-scroll">
           <div className="row-between">
@@ -885,6 +977,24 @@ function HomePage() {
           {regions.map((item) => (
             <span key={item} className="seo-link-pill muted-city">{item}</span>
           ))}
+        </div>
+      </section>
+
+      <section className="section glass reveal-on-scroll">
+        <h2>Частые вопросы</h2>
+        <div className="owner-completeness">
+          <article className="completeness-item">
+            <strong>Как быстро появляется площадка в каталоге?</strong>
+            <p>Сразу после заполнения карточки и сохранения в кабинете арендодателя.</p>
+          </article>
+          <article className="completeness-item">
+            <strong>Что получает новый арендодатель?</strong>
+            <p>3 месяца бесплатного доступа к публикации площадок и работе с входящими заявками.</p>
+          </article>
+          <article className="completeness-item">
+            <strong>Куда писать в поддержку?</strong>
+            <p>Через форму “Написать в поддержку” внизу сайта, запрос мгновенно уходит в Telegram.</p>
+          </article>
         </div>
       </section>
     </>
@@ -1545,26 +1655,6 @@ function OwnerPage() {
     setOwnerRequests((await response.json()) as OwnerLead[]);
   }
 
-  async function activateSubscription(): Promise<void> {
-    if (!owner) return;
-
-    const response = await fetch(`${API}/api/owner/subscription/checkout`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ ownerId: owner.id })
-    });
-
-    const json = await response.json();
-    if (!response.ok) {
-      setMessage(json.message ?? "Не удалось активировать подписку");
-      return;
-    }
-
-    setOwner({ ...owner, subscriptionStatus: "active", nextBillingDate: json.nextBillingDate as string });
-    setMessage(`Оплата 2000 ₽ принята. Подписка активна до ${json.nextBillingDate}`);
-    await loadOwnerDashboard(owner.id);
-  }
-
   async function addVenue(event: FormEvent): Promise<void> {
     event.preventDefault();
     if (!owner) return;
@@ -1694,7 +1784,7 @@ function OwnerPage() {
 
   const nextAction = useMemo(() => {
     if (!owner) return "";
-    if (owner.subscriptionStatus !== "active") return "Активируйте подписку, чтобы публиковать площадки и получать заявки.";
+    if (owner.trialStatus === "expired") return "Пробный период завершен. Обратитесь в поддержку для продления доступа.";
     if (ownerVenues.length === 0) return "Добавьте первую площадку: минимум 3 фото и подробное описание.";
     const pending = ownerRequests.filter((item) => item.status === "new").length;
     if (pending > 0) return `У вас ${pending} новых заявок. Рекомендуем ответить в течение 30 минут для лучшей конверсии.`;
@@ -1710,6 +1800,7 @@ function OwnerPage() {
 
       {!owner ? (
         <form className="owner-auth" onSubmit={auth}>
+          <p className="ok">Для новых арендодателей действует 3 месяца бесплатного доступа.</p>
           <div className="tabs">
             <button type="button" className={mode === "login" ? "tab active" : "tab"} onClick={() => setMode("login")}>Вход</button>
             <button type="button" className={mode === "register" ? "tab active" : "tab"} onClick={() => setMode("register")}>Регистрация</button>
@@ -1746,13 +1837,9 @@ function OwnerPage() {
 
           <div className="owner-status">
             <p><strong>{owner.name}</strong> ({owner.email})</p>
-            <p>Подписка: {owner.subscriptionStatus === "active" ? "Активна" : "Не активна"}</p>
-            <p>Тариф: 2000 ₽ / 30 дней</p>
-            {owner.subscriptionStatus !== "active" ? (
-              <button type="button" className="primary" onClick={activateSubscription}>Оплатить 2000 ₽</button>
-            ) : (
-              <p>Действует до: {owner.nextBillingDate}</p>
-            )}
+            <p>Статус запуска: 3 месяца бесплатно для новых арендодателей</p>
+            <p>Пробный доступ до: {owner.trialEndsAt}</p>
+            <p>{ownerDashboard?.trial ? `Осталось дней: ${ownerDashboard.trial.daysLeft}` : owner.trialStatus === "active" ? "Пробный доступ активен" : "Пробный доступ завершен"}</p>
             {nextAction ? <p className="next-action">{nextAction}</p> : null}
           </div>
 

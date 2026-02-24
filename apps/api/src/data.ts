@@ -58,6 +58,9 @@ export type Owner = {
   name: string;
   email: string;
   password: string;
+  createdAt: string;
+  trialEndsAt: string;
+  trialStatus: "active" | "expired";
   subscriptionStatus: "inactive" | "active";
   subscriptionPlan: "monthly_2000";
   nextBillingDate: string | null;

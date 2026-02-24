@@ -52,14 +52,38 @@ function billingDaysDiff(targetDate: string): number {
   return Math.floor((startOfDayStamp(targetDate) - todayStamp()) / 86400000);
 }
 
-function ensureOwnerBillingStatus(ownerId: string): void {
+function addDaysIso(base: Date, days: number): string {
+  return new Date(base.getTime() + days * 86400000).toISOString().slice(0, 10);
+}
+
+function ensureOwnerAccessState(ownerId: string): void {
   const owner = owners.find((item) => item.id === ownerId);
-  if (!owner || !owner.nextBillingDate) return;
-  const daysDiff = billingDaysDiff(owner.nextBillingDate);
-  if (daysDiff < 0 && owner.subscriptionStatus !== "inactive") {
-    owner.subscriptionStatus = "inactive";
-    persistStateSync();
+  if (!owner) return;
+
+  const createdAt = owner.createdAt || new Date().toISOString();
+  owner.createdAt = createdAt;
+  owner.trialEndsAt = owner.trialEndsAt || addDaysIso(new Date(createdAt), 90);
+  owner.trialStatus = billingDaysDiff(owner.trialEndsAt) >= 0 ? "active" : "expired";
+
+  if (owner.nextBillingDate) {
+    const daysDiff = billingDaysDiff(owner.nextBillingDate);
+    if (daysDiff < 0 && owner.subscriptionStatus !== "inactive") {
+      owner.subscriptionStatus = "inactive";
+    }
   }
+}
+
+function canOwnerPublish(ownerId: string): boolean {
+  ensureOwnerAccessState(ownerId);
+  const owner = owners.find((item) => item.id === ownerId);
+  if (!owner) return false;
+  return owner.trialStatus === "active" || owner.subscriptionStatus === "active";
+}
+
+function ensureOwnerBillingStatus(ownerId: string): void {
+  const snapshot = JSON.stringify(owners.find((item) => item.id === ownerId));
+  ensureOwnerAccessState(ownerId);
+  if (JSON.stringify(owners.find((item) => item.id === ownerId)) !== snapshot) persistStateSync();
 }
 
 function computeDebtors() {
@@ -670,6 +694,9 @@ app.post("/api/owner/register", (req, res) => {
     name: parsed.data.name,
     email: parsed.data.email,
     password: parsed.data.password,
+    createdAt: new Date().toISOString(),
+    trialEndsAt: addDaysIso(new Date(), 90),
+    trialStatus: "active" as const,
     subscriptionStatus: "inactive" as const,
     subscriptionPlan: "monthly_2000" as const,
     nextBillingDate: null
@@ -717,8 +744,9 @@ app.post("/api/owner/login", (req, res) => {
 
   const owner = owners.find((item) => item.email.toLowerCase() === parsed.data.email.toLowerCase() && item.password === parsed.data.password);
   if (!owner) return res.status(401).json({ message: "Invalid credentials" });
-  ensureOwnerBillingStatus(owner.id);
+  ensureOwnerAccessState(owner.id);
   trackEvent("owner_login", { ownerId: owner.id });
+  persistStateSync();
 
   return res.json({ owner: { ...owner, password: undefined } });
 });
@@ -769,12 +797,16 @@ app.get("/api/owner/subscription/status", (req, res) => {
   const ownerId = String(req.query.ownerId ?? "");
   const owner = owners.find((item) => item.id === ownerId);
   if (!owner) return res.status(404).json({ message: "Owner not found" });
-  ensureOwnerBillingStatus(owner.id);
+  ensureOwnerAccessState(owner.id);
   const daysDiff = owner.nextBillingDate ? billingDaysDiff(owner.nextBillingDate) : null;
+  const trialDaysLeft = Math.max(0, billingDaysDiff(owner.trialEndsAt));
 
   return res.json({
     ownerId: owner.id,
     status: owner.subscriptionStatus,
+    trialStatus: owner.trialStatus,
+    trialEndsAt: owner.trialEndsAt,
+    trialDaysLeft,
     nextBillingDate: owner.nextBillingDate,
     plan: owner.subscriptionPlan,
     amountRub: 2000,
@@ -804,7 +836,8 @@ app.get("/api/owner/venues", (req, res) => {
 
 app.get("/api/owner/dashboard", (req, res) => {
   const ownerId = String(req.query.ownerId ?? "");
-  ensureOwnerBillingStatus(ownerId);
+  ensureOwnerAccessState(ownerId);
+  const owner = owners.find((item) => item.id === ownerId);
   const ownerVenues = venues.filter((item) => item.ownerId === ownerId);
   const ownerVenueIds = new Set(ownerVenues.map((item) => item.id));
   const ownerRequests = leadRequests.filter((item) => ownerVenueIds.has(item.venueId));
@@ -838,6 +871,13 @@ app.get("/api/owner/dashboard", (req, res) => {
 
   return res.json({
     ownerId,
+    trial: owner
+      ? {
+          status: owner.trialStatus,
+          endsAt: owner.trialEndsAt,
+          daysLeft: Math.max(0, billingDaysDiff(owner.trialEndsAt))
+        }
+      : null,
     metrics: {
       venuesTotal: ownerVenues.length,
       leadsTotal: ownerRequests.length,
@@ -923,7 +963,9 @@ app.post("/api/owner/venues", (req, res) => {
 
   const owner = owners.find((item) => item.id === parsed.data.ownerId);
   if (!owner) return res.status(404).json({ message: "Owner not found" });
-  if (owner.subscriptionStatus !== "active") return res.status(402).json({ message: "Subscription required: 2000 RUB / 30 days" });
+  if (!canOwnerPublish(owner.id)) {
+    return res.status(402).json({ message: "Пробный период завершен. Обратитесь в поддержку для продления доступа." });
+  }
 
   const created = {
     id: `V-OWN-${venues.length + 1}`,
