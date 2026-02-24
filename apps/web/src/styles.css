@@ -563,6 +563,32 @@ input[type="number"] {
   color: var(--muted);
 }
 
+.amenities-checklist {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.amenity-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: color-mix(in oklab, var(--surface-soft) 86%, transparent);
+}
+
+.amenity-check input {
+  width: 16px;
+  height: 16px;
+}
+
+.amenity-check span {
+  font-size: 13px;
+  color: var(--text);
+}
+
 .search-submit {
   align-self: end;
   min-height: 44px;
@@ -1556,6 +1582,9 @@ input[type="number"] {
   .photo-builder,
   .photo-preview-grid,
   .support-grid {
+    grid-template-columns: 1fr;
+  }
+  .amenities-checklist {
     grid-template-columns: 1fr;
   }
   .admin-key-form,

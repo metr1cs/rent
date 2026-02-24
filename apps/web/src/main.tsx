@@ -161,6 +161,19 @@ const CATEGORY_ART_ORDER = [
   "Универсальный зал",
 ];
 
+const OWNER_POPULAR_AMENITIES = [
+  "Wi-Fi",
+  "Проектор",
+  "Звук",
+  "Парковка",
+  "Сцена",
+  "Кухня",
+  "Кондиционер",
+  "Гардероб",
+  "Флипчарт",
+  "Отдельный вход",
+];
+
 function upsertMetaTag(
   key: "name" | "property",
   value: string,
@@ -324,6 +337,12 @@ function fileToDataUrl(file: File): Promise<string> {
     reader.onerror = () => reject(new Error("read_failed"));
     reader.readAsDataURL(file);
   });
+}
+
+function dataUrlSizeBytes(dataUrl: string): number {
+  const base64 = dataUrl.split(",")[1] ?? "";
+  if (!base64) return 0;
+  return Math.floor((base64.length * 3) / 4);
 }
 
 function formatDateValue(value: Date | undefined): string {
@@ -1837,7 +1856,7 @@ function OwnerPage() {
     areaSqm: "120",
     pricePerHour: "5000",
     description: "",
-    amenities: "Wi-Fi, Проектор, Звук",
+    amenities: ["Wi-Fi", "Проектор", "Звук"] as string[],
     images: [] as string[]
   });
 
@@ -1956,7 +1975,7 @@ function OwnerPage() {
           areaSqm: Number(venueForm.areaSqm),
           pricePerHour: Number(venueForm.pricePerHour),
           description: venueForm.description,
-          amenities: venueForm.amenities.split(",").map((item) => item.trim()).filter(Boolean),
+          amenities: venueForm.amenities,
           images: venueForm.images,
         })
       });
@@ -1991,6 +2010,8 @@ function OwnerPage() {
 
     const maxPhotos = 20;
     const maxFileSizeBytes = 8 * 1024 * 1024;
+    const maxTotalBytes = 40 * 1024 * 1024;
+    const existingTotalBytes = venueForm.images.reduce((sum, image) => sum + dataUrlSizeBytes(image), 0);
     const availableSlots = Math.max(0, maxPhotos - venueForm.images.length);
     if (availableSlots <= 0) {
       setMessage(`Можно добавить максимум ${maxPhotos} фотографий`);
@@ -2001,6 +2022,7 @@ function OwnerPage() {
     const loaded: string[] = [];
     let rejectedCount = 0;
 
+    let nextTotalBytes = existingTotalBytes;
     for (const file of selected) {
       if (!file.type.startsWith("image/")) {
         rejectedCount += 1;
@@ -2010,10 +2032,15 @@ function OwnerPage() {
         rejectedCount += 1;
         continue;
       }
+      if (nextTotalBytes + file.size > maxTotalBytes) {
+        rejectedCount += 1;
+        continue;
+      }
       try {
         const dataUrl = await fileToDataUrl(file);
         if (!dataUrl || venueForm.images.includes(dataUrl) || loaded.includes(dataUrl)) continue;
         loaded.push(dataUrl);
+        nextTotalBytes += file.size;
       } catch {
         rejectedCount += 1;
       }
@@ -2033,6 +2060,16 @@ function OwnerPage() {
 
   function removePhotoFromVenue(index: number): void {
     setVenueForm((prev) => ({ ...prev, images: prev.images.filter((_, i) => i !== index) }));
+  }
+
+  function toggleAmenity(amenity: string): void {
+    setVenueForm((prev) => {
+      const exists = prev.amenities.includes(amenity);
+      return {
+        ...prev,
+        amenities: exists ? prev.amenities.filter((item) => item !== amenity) : [...prev.amenities, amenity]
+      };
+    });
   }
 
   function promotePhoto(index: number): void {
@@ -2216,8 +2253,19 @@ function OwnerPage() {
               <textarea value={venueForm.description} onChange={(e) => setVenueForm({ ...venueForm, description: e.target.value })} placeholder="Опишите формат, преимущества, ограничения" required />
             </label>
             <label className="filter-item">
-              <span>Удобства (через запятую)</span>
-              <input value={venueForm.amenities} onChange={(e) => setVenueForm({ ...venueForm, amenities: e.target.value })} placeholder="Wi-Fi, Проектор, Звук, Парковка" />
+              <span>Удобства</span>
+              <div className="amenities-checklist">
+                {OWNER_POPULAR_AMENITIES.map((item) => (
+                  <label key={item} className="amenity-check">
+                    <input
+                      type="checkbox"
+                      checked={venueForm.amenities.includes(item)}
+                      onChange={() => toggleAmenity(item)}
+                    />
+                    <span>{item}</span>
+                  </label>
+                ))}
+              </div>
             </label>
             <div className="photo-builder">
               <label className="filter-item">

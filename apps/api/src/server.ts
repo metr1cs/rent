@@ -65,7 +65,7 @@ function safeEndpointKey(pathname: string): string {
 }
 
 app.use(cors());
-app.use(express.json({ limit: "20mb" }));
+app.use(express.json({ limit: "70mb" }));
 app.use((req, res, next) => {
   const started = Date.now();
   res.on("finish", () => {
@@ -1174,7 +1174,24 @@ app.post("/api/owner/venues", (req, res) => {
     if (imageIssue) {
       return res.status(400).json({ message: "Нужно добавить минимум 3 фото площадки" });
     }
-    return res.status(400).json({ message: "Invalid venue payload" });
+    const firstIssue = parsed.error.issues[0];
+    const fieldName = String(firstIssue?.path?.[0] ?? "");
+    const fieldLabels: Record<string, string> = {
+      ownerId: "владелец",
+      title: "название",
+      region: "регион",
+      city: "город",
+      address: "адрес",
+      category: "категория",
+      capacity: "вместимость",
+      areaSqm: "площадь",
+      pricePerHour: "цена",
+      description: "описание",
+      amenities: "удобства",
+      images: "фотографии",
+    };
+    const label = fieldLabels[fieldName] ?? fieldName;
+    return res.status(400).json({ message: `Проверьте поле: ${label}` });
   }
 
   const owner = owners.find((item) => item.id === parsed.data.ownerId);
