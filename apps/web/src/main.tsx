@@ -1771,6 +1771,7 @@ function VenuePage() {
 }
 
 function OwnerPage() {
+  const OWNER_SESSION_KEY = "vmestoru-owner-id";
   const [mode, setMode] = useState<"login" | "register">("login");
   const [owner, setOwner] = useState<Owner | null>(null);
   const [authForm, setAuthForm] = useState({ name: "", email: "", password: "" });
@@ -1800,6 +1801,12 @@ function OwnerPage() {
         },
       ],
     });
+  }, []);
+
+  useEffect(() => {
+    const savedOwnerId = localStorage.getItem(OWNER_SESSION_KEY)?.trim();
+    if (!savedOwnerId) return;
+    void restoreOwnerSession(savedOwnerId);
   }, []);
 
   const [venueForm, setVenueForm] = useState({
@@ -1837,11 +1844,30 @@ function OwnerPage() {
       return;
     }
 
-    setOwner(json.owner as Owner);
+    const authedOwner = json.owner as Owner;
+    setOwner(authedOwner);
+    localStorage.setItem(OWNER_SESSION_KEY, authedOwner.id);
     setMessage("Успешный вход");
-    await loadOwnerVenues((json.owner as Owner).id);
-    await loadOwnerDashboard((json.owner as Owner).id);
-    await loadOwnerRequests((json.owner as Owner).id, "", "", "");
+    await loadOwnerVenues(authedOwner.id);
+    await loadOwnerDashboard(authedOwner.id);
+    await loadOwnerRequests(authedOwner.id, "", "", "");
+  }
+
+  async function restoreOwnerSession(ownerId: string): Promise<void> {
+    try {
+      const response = await fetch(`${API}/api/owner/profile?ownerId=${encodeURIComponent(ownerId)}`);
+      if (!response.ok) {
+        localStorage.removeItem(OWNER_SESSION_KEY);
+        return;
+      }
+      const payload = (await response.json()) as { owner: Owner };
+      setOwner(payload.owner);
+      await loadOwnerVenues(ownerId);
+      await loadOwnerDashboard(ownerId);
+      await loadOwnerRequests(ownerId, requestStatusFilter, requestSlaFilter, requestQuery);
+    } catch {
+      localStorage.removeItem(OWNER_SESSION_KEY);
+    }
   }
 
   async function loadOwnerVenues(ownerId: string): Promise<void> {

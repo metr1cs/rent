@@ -932,6 +932,15 @@ app.post("/api/owner/login", (req, res) => {
   return res.json({ owner: { ...owner, password: undefined } });
 });
 
+app.get("/api/owner/profile", (req, res) => {
+  const ownerId = String(req.query.ownerId ?? "");
+  if (!ownerId) return res.status(400).json({ message: "ownerId is required" });
+  const owner = owners.find((item) => item.id === ownerId);
+  if (!owner) return res.status(404).json({ message: "Owner not found" });
+  ensureOwnerAccessState(owner.id);
+  return res.json({ owner: { ...owner, password: undefined } });
+});
+
 const ownerSubscriptionSchema = z.object({ ownerId: z.string().min(2) });
 
 app.post("/api/owner/subscription/checkout", (req, res) => {
