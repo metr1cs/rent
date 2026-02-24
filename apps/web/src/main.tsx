@@ -357,18 +357,20 @@ function DateField({ value, onChange }: { value: Date | undefined; onChange: (da
         {value ? value.toLocaleDateString("ru-RU") : "Выберите дату"}
       </button>
       {opened ? (
-        <div className="date-popover" role="dialog" aria-label="Выбор даты">
-          <DayPicker
-            mode="single"
-            selected={value}
-            onSelect={(date) => {
-              onChange(date);
-              setOpened(false);
-            }}
-          />
-          <button type="button" className="date-clear" onClick={() => onChange(undefined)}>
-            Сбросить дату
-          </button>
+        <div className="date-modal-overlay" onClick={() => setOpened(false)}>
+          <div className="date-popover" role="dialog" aria-modal="true" aria-label="Выбор даты" onClick={(event) => event.stopPropagation()}>
+            <DayPicker
+              mode="single"
+              selected={value}
+              onSelect={(date) => {
+                onChange(date);
+                setOpened(false);
+              }}
+            />
+            <button type="button" className="date-clear" onClick={() => onChange(undefined)}>
+              Сбросить дату
+            </button>
+          </div>
         </div>
       ) : null}
     </div>

@@ -578,12 +578,20 @@ input[type="number"] {
   text-align: left;
 }
 
+.date-modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 2300;
+  background: rgba(10, 14, 28, 0.38);
+  display: grid;
+  place-items: center;
+  padding: 16px;
+}
+
 .date-popover {
-  position: absolute;
-  top: calc(100% + 8px);
-  left: 0;
-  z-index: 2200;
-  width: min(320px, 92vw);
+  position: relative;
+  z-index: 2301;
+  width: min(320px, calc(100vw - 32px));
   padding: 10px;
   border-radius: 14px;
   border: 1px solid var(--line);
@@ -1540,9 +1548,7 @@ input[type="number"] {
   .moderation-summary {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
-  .date-popover {
-    width: min(300px, calc(100vw - 44px));
-  }
+  .date-popover { width: min(300px, calc(100vw - 36px)); }
 }
 
 @media (max-width: 320px) {
@@ -1555,8 +1561,5 @@ input[type="number"] {
     right: 8px;
     bottom: 8px;
   }
-  .date-popover {
-    left: auto;
-    right: 0;
-  }
+  .date-popover { width: min(280px, calc(100vw - 20px)); }
 }
