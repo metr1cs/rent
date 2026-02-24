@@ -227,7 +227,7 @@ main { margin-top: 14px; display: grid; gap: 14px; }
 }
 
 .hero-revolution {
-  overflow: hidden;
+  overflow: visible;
 }
 
 .hero-aura {
@@ -557,6 +557,7 @@ input[type="number"] {
 .date-picker-wrap {
   position: relative;
   isolation: isolate;
+  z-index: 80;
 }
 
 .date-trigger {
@@ -567,7 +568,7 @@ input[type="number"] {
   position: absolute;
   top: calc(100% + 8px);
   left: 0;
-  z-index: 300;
+  z-index: 2200;
   width: min(320px, 92vw);
   padding: 10px;
   border-radius: 14px;
@@ -1355,6 +1356,38 @@ input[type="number"] {
   background: color-mix(in oklab, var(--surface-soft) 88%, transparent);
   display: grid;
   gap: 8px;
+}
+
+.support-open-btn {
+  margin-top: 6px;
+}
+
+.support-modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 2400;
+  background: rgba(10, 14, 28, 0.5);
+  display: grid;
+  place-items: center;
+  padding: 18px;
+}
+
+.support-modal {
+  width: min(680px, 100%);
+  max-height: calc(100vh - 40px);
+  overflow: auto;
+  padding: 14px;
+}
+
+.support-modal-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.support-modal-head h4 {
+  margin: 0;
 }
 
 .support-form h4 {

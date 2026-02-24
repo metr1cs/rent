@@ -286,11 +286,11 @@ function slugToCategory(value: string): string {
 }
 
 function categoryWebpArt(name: string): string {
+  const index = CATEGORY_ART_ORDER.findIndex((item) => item === name);
+  if (index >= 0) return `/catalog-art/c${String(index + 1).padStart(2, "0")}.webp`;
   const stockImage = CATEGORY_STOCK_IMAGES[name];
   if (stockImage) return stockImage;
-  const index = CATEGORY_ART_ORDER.findIndex((item) => item === name);
-  if (index < 0) return DEFAULT_OG_IMAGE;
-  return `/catalog-art/c${String(index + 1).padStart(2, "0")}.webp`;
+  return DEFAULT_OG_IMAGE;
 }
 
 async function trackEvent(
@@ -399,7 +399,6 @@ function Header({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: () => v
       <nav className="nav">
         <NavLink to="/catalog">Каталог</NavLink>
         <a href="/#how-it-works">Как это работает</a>
-        <a href="/#support">Поддержка</a>
       </nav>
 
       <div className="header-actions">
@@ -993,7 +992,7 @@ function HomePage() {
           </article>
           <article className="completeness-item">
             <strong>Куда писать в поддержку?</strong>
-            <p>Через форму “Написать в поддержку” внизу сайта, запрос мгновенно уходит в Telegram.</p>
+            <p>Через кнопку “Написать в поддержку” внизу сайта. Откроется окно с формой обращения.</p>
           </article>
         </div>
       </section>
@@ -2512,6 +2511,7 @@ function CookieBanner() {
 function Footer() {
   const [supportForm, setSupportForm] = useState({ name: "", phone: "", message: "" });
   const [supportMessage, setSupportMessage] = useState("");
+  const [isSupportModalOpen, setSupportModalOpen] = useState(false);
 
   async function sendSupportRequest(event: FormEvent): Promise<void> {
     event.preventDefault();
@@ -2547,36 +2547,53 @@ function Footer() {
         <div>
           <h4>Контакты</h4>
           <p>+7 (995) 592-62-60</p>
-          <p><a href="https://t.me/vmestoru_support" target="_blank" rel="noreferrer">Telegram поддержка</a></p>
+          <button type="button" className="primary support-open-btn" onClick={() => setSupportModalOpen(true)}>
+            Написать в поддержку
+          </button>
         </div>
       </div>
-      <form className="support-form" onSubmit={sendSupportRequest}>
-        <h4>Написать в поддержку</h4>
-        <p className="muted">Обращение отправляется напрямую в Telegram-группу поддержки.</p>
-        <div className="support-grid">
-          <input
-            placeholder="Ваше имя"
-            value={supportForm.name}
-            onChange={(e) => setSupportForm({ ...supportForm, name: e.target.value })}
-            required
-          />
-          <input
-            placeholder="Телефон"
-            value={supportForm.phone}
-            onChange={(e) => setSupportForm({ ...supportForm, phone: e.target.value })}
-            required
-          />
-        </div>
-        <textarea
-          placeholder="Опишите вопрос или проблему"
-          value={supportForm.message}
-          onChange={(e) => setSupportForm({ ...supportForm, message: e.target.value })}
-          required
-        />
-        <button type="submit" className="primary">Отправить в поддержку</button>
-        {supportMessage ? <p className="ok">{supportMessage}</p> : null}
-      </form>
       <p className="footer-copy">© {new Date().getFullYear()} VmestoRu. Все права защищены.</p>
+      {isSupportModalOpen ? (
+        <div
+          className="support-modal-overlay"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="support-modal-title"
+          onClick={() => setSupportModalOpen(false)}
+        >
+          <div className="support-modal glass" onClick={(event) => event.stopPropagation()}>
+            <div className="support-modal-head">
+              <h4 id="support-modal-title">Написать в поддержку</h4>
+              <button type="button" className="ghost-btn" onClick={() => setSupportModalOpen(false)}>Закрыть</button>
+            </div>
+            <form className="support-form" onSubmit={sendSupportRequest}>
+              <p className="muted">Заполните форму, и команда свяжется с вами.</p>
+              <div className="support-grid">
+                <input
+                  placeholder="Ваше имя"
+                  value={supportForm.name}
+                  onChange={(e) => setSupportForm({ ...supportForm, name: e.target.value })}
+                  required
+                />
+                <input
+                  placeholder="Телефон"
+                  value={supportForm.phone}
+                  onChange={(e) => setSupportForm({ ...supportForm, phone: e.target.value })}
+                  required
+                />
+              </div>
+              <textarea
+                placeholder="Опишите вопрос или проблему"
+                value={supportForm.message}
+                onChange={(e) => setSupportForm({ ...supportForm, message: e.target.value })}
+                required
+              />
+              <button type="submit" className="primary">Отправить в поддержку</button>
+              {supportMessage ? <p className="ok">{supportMessage}</p> : null}
+            </form>
+          </div>
+        </div>
+      ) : null}
     </footer>
   );
 }
