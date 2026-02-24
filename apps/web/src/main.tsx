@@ -285,6 +285,10 @@ function slugToCategory(value: string): string {
   return decodeURIComponent(value).replace(/-/g, " ");
 }
 
+function regionToSlug(value: string): string {
+  return encodeURIComponent(value.trim().toLowerCase().replace(/\s+/g, "-"));
+}
+
 function categoryWebpArt(name: string): string {
   const index = CATEGORY_ART_ORDER.findIndex((item) => item === name);
   if (index >= 0) return `/catalog-art/c${String(index + 1).padStart(2, "0")}.webp`;
@@ -993,7 +997,7 @@ function HomePage() {
         </div>
         <div className="seo-links muted-links">
           {regions.map((item) => (
-            <span key={item} className="seo-link-pill muted-city">{item}</span>
+            <Link key={item} to={`/city/${regionToSlug(item)}`} className="seo-link-pill muted-city">{item}</Link>
           ))}
         </div>
         <div className="static-category-grid">
@@ -1169,7 +1173,7 @@ function CatalogPage() {
         </div>
         <div className="seo-links muted-links">
           {regions.map((item) => (
-            <span key={item} className="seo-link-pill muted-city">{item}</span>
+            <Link key={item} to={`/city/${regionToSlug(item)}`} className="seo-link-pill muted-city">{item}</Link>
           ))}
         </div>
         <div className="static-category-grid">
@@ -1218,15 +1222,116 @@ function CatalogPage() {
   );
 }
 
+function CityPage() {
+  const { citySlug } = useParams();
+  const [regionName, setRegionName] = useState("");
+  const [categoryCards, setCategoryCards] = useState<Array<{ id: string; name: string; image: string; count: number }>>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    void bootstrap();
+  }, [citySlug]);
+
+  useEffect(() => {
+    if (!citySlug) return;
+    const path = `/city/${citySlug}`;
+    applySeo({
+      title: `${regionName || "Город"} — аренда площадок по категориям | VmestoRu`,
+      description: `Каталог площадок по категориям в городе ${regionName || "..."}. Выбирайте формат и переходите к релевантным локациям.`,
+      path,
+      noindex: !regionName || categoryCards.length === 0,
+      jsonLd: [
+        {
+          id: "city-page",
+          payload: {
+            "@context": "https://schema.org",
+            "@type": "CollectionPage",
+            name: `Каталог площадок: ${regionName || "Город"}`,
+            url: `${SITE_URL}${path}`,
+          },
+        },
+      ],
+    });
+  }, [citySlug, regionName, categoryCards.length]);
+
+  async function bootstrap(): Promise<void> {
+    if (!citySlug) return;
+    setLoading(true);
+    setError("");
+    try {
+      const [categoriesRes, venuesRes] = await Promise.all([fetch(`${API}/api/categories`), fetch(`${API}/api/venues`)]);
+      if (!categoriesRes.ok || !venuesRes.ok) {
+        setError("Не удалось загрузить страницу города.");
+        setCategoryCards([]);
+        setRegionName("");
+        return;
+      }
+      const categories = (await categoriesRes.json()) as Category[];
+      const venues = (await venuesRes.json()) as Venue[];
+      const allRegions = [...new Set(venues.map((item) => item.region))];
+      const resolvedRegion = allRegions.find((item) => regionToSlug(item) === citySlug) ?? "";
+      setRegionName(resolvedRegion);
+      if (!resolvedRegion) {
+        setCategoryCards([]);
+        setError("Город не найден в каталоге.");
+        return;
+      }
+      const cards = categories
+        .map((category) => {
+          const count = venues.filter((venue) => venue.category === category.name && venue.region === resolvedRegion).length;
+          return {
+            id: category.id,
+            name: category.name,
+            image: categoryWebpArt(category.name),
+            count,
+          };
+        })
+        .filter((item) => item.count > 0)
+        .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name, "ru-RU"));
+      setCategoryCards(cards);
+    } catch {
+      setError("Ошибка сети при загрузке города.");
+      setCategoryCards([]);
+      setRegionName("");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <section className="section glass reveal-on-scroll">
+      <Breadcrumbs items={[{ label: "Главная", to: "/" }, { label: "Каталог", to: "/catalog" }, { label: regionName || "Город" }]} />
+      <h1>Площадки в городе: <span className="grad">{regionName || "..."}</span></h1>
+      {loading ? <p className="muted">Загрузка...</p> : null}
+      {!loading && error ? <p className="error-note">{error}</p> : null}
+      {!loading && !error ? (
+        <div className="category-grid">
+          {categoryCards.map((item) => (
+            <Link key={item.id} className="category-tile" to={`/category/${categoryToSlug(item.name)}/${regionToSlug(regionName)}`}>
+              <img src={item.image} alt={item.name} loading="lazy" />
+              <div className="category-tile-body">
+                <h3>{item.name}</h3>
+                <p>{item.count} площадок</p>
+              </div>
+            </Link>
+          ))}
+        </div>
+      ) : null}
+    </section>
+  );
+}
+
 function CategoryPage() {
-  const { slug } = useParams();
+  const { slug, citySlug } = useParams();
   const [searchParams, setSearchParams] = useSearchParams();
   const [categoryName, setCategoryName] = useState("");
+  const [lockedRegion, setLockedRegion] = useState("");
   const [venuesByCategory, setVenuesByCategory] = useState<Venue[]>([]);
   const [categoryUniverse, setCategoryUniverse] = useState<Venue[]>([]);
 
   const [query, setQuery] = useState(searchParams.get("q") ?? "");
-  const [region, setRegion] = useState(searchParams.get("region") ?? "");
+  const [region, setRegion] = useState(citySlug ? "" : (searchParams.get("region") ?? ""));
   const [capacity, setCapacity] = useState(searchParams.get("capacity") ?? "");
   const [sort, setSort] = useState(searchParams.get("sort") || "recommended");
   const [loading, setLoading] = useState(true);
@@ -1234,27 +1339,33 @@ function CategoryPage() {
 
   useEffect(() => {
     setQuery(searchParams.get("q") ?? "");
-    setRegion(searchParams.get("region") ?? "");
+    setRegion(citySlug ? "" : (searchParams.get("region") ?? ""));
     setCapacity(searchParams.get("capacity") ?? "");
     setSort(searchParams.get("sort") || "recommended");
     void loadCategory();
-  }, [slug, searchParams]);
+  }, [slug, citySlug, searchParams]);
 
   useEffect(() => {
     if (!slug || !categoryName) return;
+    const basePath = citySlug ? `/category/${slug}/${citySlug}` : `/category/${slug}`;
+    const hasSeoFilters = Boolean(query || capacity || sort !== "recommended" || (!citySlug && region));
+    const normalizedRegion = citySlug ? lockedRegion : region;
+    const titleRegionSuffix = normalizedRegion ? ` в ${normalizedRegion}` : "";
+    const descriptionRegionSuffix = normalizedRegion ? ` в городе ${normalizedRegion}` : "";
     void trackEvent("category_open", { category: categoryName, source: "direct" });
     applySeo({
-      title: `${categoryName} — аренда площадок | VmestoRu`,
-      description: `Подбор площадок категории «${categoryName}»: сравнивайте рейтинг, цену и доступность в городах России.`,
-      path: `/category/${slug}`,
+      title: `${categoryName}${titleRegionSuffix} — аренда площадок | VmestoRu`,
+      description: `Подбор площадок категории «${categoryName}»${descriptionRegionSuffix}: сравнивайте рейтинг, цену и доступность в городах России.`,
+      path: basePath,
+      noindex: hasSeoFilters || (citySlug ? !lockedRegion : false),
       jsonLd: [
         {
           id: "category-page",
           payload: {
             "@context": "https://schema.org",
             "@type": "CollectionPage",
-            name: `${categoryName} — каталог площадок`,
-            url: `${SITE_URL}/category/${slug}`,
+            name: `${categoryName}${titleRegionSuffix} — каталог площадок`,
+            url: `${SITE_URL}${basePath}`,
           },
         },
         {
@@ -1266,12 +1377,15 @@ function CategoryPage() {
               { "@type": "ListItem", position: 1, name: "Главная", item: `${SITE_URL}/` },
               { "@type": "ListItem", position: 2, name: "Каталог", item: `${SITE_URL}/catalog` },
               { "@type": "ListItem", position: 3, name: categoryName, item: `${SITE_URL}/category/${slug}` },
+              ...(lockedRegion
+                ? [{ "@type": "ListItem", position: 4, name: lockedRegion, item: `${SITE_URL}${basePath}` }]
+                : []),
             ],
           },
         },
       ],
     });
-  }, [categoryName, slug]);
+  }, [categoryName, slug, citySlug, lockedRegion, query, capacity, sort, region]);
 
   async function loadCategory(): Promise<void> {
     if (!slug) return;
@@ -1285,16 +1399,25 @@ function CategoryPage() {
       setCategoryName(resolvedName);
 
       const universeRes = await fetch(`${API}/api/venues?category=${encodeURIComponent(resolvedName)}`);
+      let universeData: Venue[] = [];
       if (universeRes.ok) {
-        setCategoryUniverse((await universeRes.json()) as Venue[]);
+        universeData = (await universeRes.json()) as Venue[];
+        setCategoryUniverse(universeData);
       } else {
         setCategoryUniverse([]);
       }
 
+      const resolvedRegion = citySlug
+        ? [...new Set(universeData.map((item) => item.region))].find((item) => regionToSlug(item) === citySlug) ?? ""
+        : "";
+      setLockedRegion(resolvedRegion);
+      if (citySlug) setRegion(resolvedRegion);
+
       const params = new URLSearchParams();
       params.set("category", resolvedName);
       if (query) params.set("q", query);
-      if (region) params.set("region", region);
+      const effectiveRegion = citySlug ? resolvedRegion : region;
+      if (effectiveRegion) params.set("region", effectiveRegion);
       if (capacity) params.set("capacity", capacity);
       if (sort) params.set("sort", sort);
 
@@ -1318,12 +1441,12 @@ function CategoryPage() {
     event.preventDefault();
     const params = new URLSearchParams();
     if (query) params.set("q", query);
-    if (region) params.set("region", region);
+    if (!citySlug && region) params.set("region", region);
     if (capacity) params.set("capacity", capacity);
     if (sort) params.set("sort", sort);
     void trackEvent("category_filter_apply", {
       category: categoryName || slug || "",
-      region: region || "all",
+      region: citySlug ? (lockedRegion || "all") : (region || "all"),
       hasQuery: Boolean(query),
       hasCapacity: Boolean(capacity),
       sort,
@@ -1333,20 +1456,29 @@ function CategoryPage() {
 
   function resetFilters(): void {
     setQuery("");
-    setRegion("");
+    setRegion(citySlug ? lockedRegion : "");
     setCapacity("");
     setSort("recommended");
     setSearchParams(new URLSearchParams({ sort: "recommended" }));
   }
 
   const regions = useMemo(() => [...new Set(categoryUniverse.map((item) => item.region))], [categoryUniverse]);
+  const availableRegions = lockedRegion ? [lockedRegion] : regions;
+  const headingSuffix = lockedRegion ? ` в ${lockedRegion}` : "";
 
   return (
     <section className="section glass reveal-on-scroll">
-      <Breadcrumbs items={[{ label: "Главная", to: "/" }, { label: "Каталог", to: "/catalog" }, { label: categoryName || "Категория" }]} />
+      <Breadcrumbs
+        items={[
+          { label: "Главная", to: "/" },
+          { label: "Каталог", to: "/catalog" },
+          { label: categoryName || "Категория" },
+          ...(lockedRegion ? [{ label: lockedRegion }] : []),
+        ]}
+      />
       <Link to="/catalog" className="back-link">← Назад в категории</Link>
       <h1>
-        Категория: <span className="grad">{categoryName || "..."}</span>
+        Категория: <span className="grad">{categoryName || "..."}{headingSuffix}</span>
       </h1>
       <form className="search-grid" onSubmit={applyFilters}>
         <label className="filter-item">
@@ -1354,10 +1486,10 @@ function CategoryPage() {
           <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Название или описание" />
         </label>
         <label className="filter-item">
-          <span>Регион</span>
-          <select value={region} onChange={(e) => setRegion(e.target.value)}>
+          <span>{lockedRegion ? "Город" : "Регион"}</span>
+          <select value={region} onChange={(e) => setRegion(e.target.value)} disabled={Boolean(lockedRegion)}>
             <option value="">Все регионы</option>
-            {regions.map((item) => (
+            {availableRegions.map((item) => (
               <option key={item} value={item}>{item}</option>
             ))}
           </select>
@@ -2749,6 +2881,8 @@ function AppContent({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: () 
         <Routes>
           <Route path="/" element={<HomePage />} />
           <Route path="/catalog" element={<CatalogPage />} />
+          <Route path="/city/:citySlug" element={<CityPage />} />
+          <Route path="/category/:slug/:citySlug" element={<CategoryPage />} />
           <Route path="/category/:slug" element={<CategoryPage />} />
           <Route path="/venue/:id" element={<VenuePage />} />
           <Route path="/owner" element={<OwnerPage />} />
