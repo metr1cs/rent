@@ -13,6 +13,8 @@ const telegramBotToken = process.env.TELEGRAM_BOT_TOKEN ?? "";
 const telegramChatId = process.env.TELEGRAM_CHAT_ID ?? "";
 const supportTelegramChatId = process.env.SUPPORT_TELEGRAM_CHAT_ID ?? telegramChatId;
 const adminNotifyKey = process.env.ADMIN_NOTIFY_KEY ?? "";
+const adminPanelLogin = process.env.ADMIN_PANEL_LOGIN ?? "Kaktyz12";
+const adminPanelPassword = process.env.ADMIN_PANEL_PASSWORD ?? "DontPussy1221";
 const autoBillingNotifierEnabled = process.env.AUTO_BILLING_NOTIFIER === "true";
 const billingNotifierIntervalMinutes = Number(process.env.BILLING_NOTIFIER_INTERVAL_MINUTES ?? 60);
 const reminderSendRegistry = new Set<string>();
@@ -335,14 +337,19 @@ app.post("/api/analytics/event", (req, res) => {
 });
 
 const adminAuthSchema = z.object({
-  accessKey: z.string().min(4),
+  accessKey: z.string().min(4).optional(),
+  login: z.string().min(3).max(80).optional(),
+  password: z.string().min(6).max(160).optional(),
   moderator: z.string().min(2).max(80).optional()
 });
 
 app.post("/api/admin/auth", (req, res) => {
   const parsed = adminAuthSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ message: "Invalid auth payload" });
-  if (!adminNotifyKey || parsed.data.accessKey !== adminNotifyKey) return res.status(403).json({ message: "Forbidden" });
+
+  const byKey = Boolean(adminNotifyKey) && parsed.data.accessKey === adminNotifyKey;
+  const byLoginPassword = parsed.data.login === adminPanelLogin && parsed.data.password === adminPanelPassword;
+  if (!byKey && !byLoginPassword) return res.status(403).json({ message: "Forbidden" });
 
   const token = crypto.randomBytes(24).toString("hex");
   const moderator = parsed.data.moderator ?? "admin";

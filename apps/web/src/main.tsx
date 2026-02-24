@@ -2800,7 +2800,8 @@ function OwnerPage() {
 }
 
 function AdminPanelPage() {
-  const [adminAccessKey, setAdminAccessKey] = useState("");
+  const [adminLogin, setAdminLogin] = useState("Kaktyz12");
+  const [adminPassword, setAdminPassword] = useState("DontPussy1221");
   const [adminSession, setAdminSession] = useState(() => localStorage.getItem("vmestoru-admin-session") ?? "");
   const [adminSessionExpiresAt, setAdminSessionExpiresAt] = useState(() => localStorage.getItem("vmestoru-admin-session-expires-at") ?? "");
   const [moderatorName, setModeratorName] = useState(() => localStorage.getItem("vmestoru-moderator-name") ?? "Admin");
@@ -2864,8 +2865,8 @@ function AdminPanelPage() {
 
   async function login(event: FormEvent): Promise<void> {
     event.preventDefault();
-    if (!adminAccessKey.trim()) {
-      setError("Введите ключ доступа администратора.");
+    if (!adminLogin.trim() || !adminPassword.trim()) {
+      setError("Введите логин и пароль администратора.");
       return;
     }
     setError("");
@@ -2873,10 +2874,14 @@ function AdminPanelPage() {
       const response = await fetch(`${API}/api/admin/auth`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ accessKey: adminAccessKey.trim(), moderator: moderatorName.trim() || "Admin" }),
+        body: JSON.stringify({
+          login: adminLogin.trim(),
+          password: adminPassword,
+          moderator: moderatorName.trim() || "Admin"
+        }),
       });
       if (!response.ok) {
-        setError(response.status === 403 ? "Неверный ключ доступа." : "Не удалось войти в админку.");
+        setError(response.status === 403 ? "Неверный логин или пароль." : "Не удалось войти в админку.");
         return;
       }
       const payload = (await response.json()) as { token: string; expiresAt: string };
@@ -2885,7 +2890,6 @@ function AdminPanelPage() {
       localStorage.setItem("vmestoru-admin-session", payload.token);
       localStorage.setItem("vmestoru-admin-session-expires-at", payload.expiresAt);
       localStorage.setItem("vmestoru-moderator-name", moderatorName.trim() || "Admin");
-      setAdminAccessKey("");
       await loadAll(payload.token);
     } catch {
       setError("Ошибка сети при входе в админку.");
@@ -3015,8 +3019,12 @@ function AdminPanelPage() {
         <p className="muted">Единый центр управления пользователями, площадками, заявками и поддержкой.</p>
         <form className="admin-key-form" onSubmit={login}>
           <label className="filter-item">
-            <span>Ключ доступа</span>
-            <input value={adminAccessKey} onChange={(e) => setAdminAccessKey(e.target.value)} placeholder="Введите admin key" />
+            <span>Логин</span>
+            <input value={adminLogin} onChange={(e) => setAdminLogin(e.target.value)} placeholder="Введите логин" />
+          </label>
+          <label className="filter-item">
+            <span>Пароль</span>
+            <input type="password" value={adminPassword} onChange={(e) => setAdminPassword(e.target.value)} placeholder="Введите пароль" />
           </label>
           <label className="filter-item">
             <span>Имя администратора</span>
@@ -3172,7 +3180,8 @@ function AdminPanelPage() {
 }
 
 function AdminReviewsPage() {
-  const [adminAccessKey, setAdminAccessKey] = useState("");
+  const [adminLogin, setAdminLogin] = useState("Kaktyz12");
+  const [adminPassword, setAdminPassword] = useState("DontPussy1221");
   const [adminSession, setAdminSession] = useState(() => localStorage.getItem("vmestoru-admin-session") ?? "");
   const [adminSessionExpiresAt, setAdminSessionExpiresAt] = useState(() => localStorage.getItem("vmestoru-admin-session-expires-at") ?? "");
   const [moderatorName, setModeratorName] = useState(() => localStorage.getItem("vmestoru-moderator-name") ?? "Moderator");
@@ -3247,8 +3256,8 @@ function AdminReviewsPage() {
 
   async function loginModerator(event: FormEvent): Promise<void> {
     event.preventDefault();
-    if (!adminAccessKey.trim()) {
-      setError("Введите ключ доступа модератора.");
+    if (!adminLogin.trim() || !adminPassword.trim()) {
+      setError("Введите логин и пароль администратора.");
       return;
     }
     setError("");
@@ -3257,18 +3266,18 @@ function AdminReviewsPage() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          accessKey: adminAccessKey.trim(),
+          login: adminLogin.trim(),
+          password: adminPassword,
           moderator: moderatorName.trim() || "Moderator",
         }),
       });
       if (!response.ok) {
-        setError(response.status === 403 ? "Неверный ключ доступа." : "Не удалось авторизоваться в модерации.");
+        setError(response.status === 403 ? "Неверный логин или пароль." : "Не удалось авторизоваться в модерации.");
         return;
       }
       const payload = (await response.json()) as { token: string; expiresAt: string };
       setAdminSession(payload.token);
       setAdminSessionExpiresAt(payload.expiresAt);
-      setAdminAccessKey("");
       localStorage.setItem("vmestoru-admin-session", payload.token);
       localStorage.setItem("vmestoru-admin-session-expires-at", payload.expiresAt);
       await loadReviews(status);
@@ -3280,7 +3289,7 @@ function AdminReviewsPage() {
 
   async function loadReviews(nextStatus: string): Promise<void> {
     if (!adminSession.trim()) {
-      setError("Введите ключ доступа и войдите в модерацию.");
+      setError("Введите логин и пароль и войдите в модерацию.");
       setReviews([]);
       return;
     }
@@ -3413,11 +3422,20 @@ function AdminReviewsPage() {
 
       <form className="admin-key-form" onSubmit={saveAdminKey}>
         <label className="filter-item">
-          <span>Ключ доступа</span>
+          <span>Логин</span>
           <input
-            value={adminAccessKey}
-            onChange={(e) => setAdminAccessKey(e.target.value)}
-            placeholder="Введите ключ модератора"
+            value={adminLogin}
+            onChange={(e) => setAdminLogin(e.target.value)}
+            placeholder="Введите логин"
+          />
+        </label>
+        <label className="filter-item">
+          <span>Пароль</span>
+          <input
+            type="password"
+            value={adminPassword}
+            onChange={(e) => setAdminPassword(e.target.value)}
+            placeholder="Введите пароль"
           />
         </label>
         <button type="submit" className="primary">Войти</button>
