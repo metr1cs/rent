@@ -474,12 +474,15 @@ function HomePage() {
   const regions = useMemo(() => [...new Set(allVenues.map((item) => item.region))], [allVenues]);
   const homeCategoryCards = useMemo(
     () =>
-      categories.map((item) => ({
-        id: item.id,
-        name: item.name,
-        image: categoryWebpArt(item.name),
-        count: allVenues.filter((venue) => venue.category === item.name).length,
-      })),
+      categories
+        .map((item) => ({
+          id: item.id,
+          name: item.name,
+          image: categoryWebpArt(item.name),
+          count: allVenues.filter((venue) => venue.category === item.name).length,
+        }))
+        .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name, "ru-RU"))
+        .slice(0, 8),
     [categories, allVenues]
   );
 
@@ -567,7 +570,7 @@ function HomePage() {
             "@context": "https://schema.org",
             "@type": "ItemList",
             name: "Категории площадок VmestoRu",
-            itemListElement: categories.slice(0, 12).map((item, index) => ({
+            itemListElement: homeCategoryCards.map((item, index) => ({
               "@type": "ListItem",
               position: index + 1,
               name: item.name,
@@ -610,7 +613,7 @@ function HomePage() {
         },
       ],
     });
-  }, [categories]);
+  }, [categories, homeCategoryCards]);
 
   async function bootstrap(): Promise<void> {
     const [featuredRes, categoriesRes, venuesRes] = await Promise.all([
