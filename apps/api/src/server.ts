@@ -519,15 +519,26 @@ const leadSchema = z.object({
 });
 
 const supportRequestSchema = z.object({
-  name: z.string().min(2),
-  phone: z.string().min(6),
-  message: z.string().min(5).max(2000),
+  name: z.string().trim().min(1).max(120).optional().default("Пользователь"),
+  phone: z.string().trim().min(0).max(60).optional().default("не указан"),
+  message: z.string().trim().min(1).max(2000).optional(),
+  text: z.string().trim().min(1).max(2000).optional(),
+  comment: z.string().trim().min(1).max(2000).optional(),
   page: z.string().max(400).optional()
 });
 
 app.post("/api/support/requests", (req, res) => {
   const parsed = supportRequestSchema.safeParse(req.body);
-  if (!parsed.success) return res.status(400).json({ message: "Invalid support payload" });
+  if (!parsed.success) {
+    return res.status(400).json({
+      message: "Некорректный запрос в поддержку. Проверьте заполнение полей.",
+      issues: parsed.error.issues.map((item) => ({ path: item.path.join("."), error: item.message }))
+    });
+  }
+  const normalizedMessage = (parsed.data.message || parsed.data.text || parsed.data.comment || "").trim();
+  if (!normalizedMessage) {
+    return res.status(400).json({ message: "Добавьте текст обращения в поддержку." });
+  }
   if (!telegramBotToken || !supportTelegramChatId.trim()) {
     return res.status(503).json({ message: "Канал поддержки временно недоступен. Свяжитесь по номеру +7 (995) 592-62-60." });
   }
@@ -539,7 +550,7 @@ app.post("/api/support/requests", (req, res) => {
       `Имя: ${parsed.data.name}`,
       `Телефон: ${parsed.data.phone}`,
       `Страница: ${parsed.data.page || "-"}`,
-      `Сообщение: ${parsed.data.message}`,
+      `Сообщение: ${normalizedMessage}`,
       `Дата: ${new Date(createdAt).toLocaleString("ru-RU")}`
     ].join("\n"),
     supportTelegramChatId
