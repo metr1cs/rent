@@ -27,14 +27,19 @@ class Orchestrator:
         steps.extend([backend_result, frontend_result])
 
         qa_result = self.registry.qa.run(Task(stage="qa", objective=mission, priority=Priority.HIGH))
+        qa_automation_result = self.registry.qa_automation.run(Task(stage="qa_automation", objective=mission, priority=Priority.HIGH))
         security_result = self.registry.security.run(Task(stage="security", objective=mission, priority=Priority.HIGH))
         devops_result = self.registry.devops.run(Task(stage="release_ops", objective=mission, priority=Priority.HIGH))
-        steps.extend([qa_result, security_result, devops_result])
+        sre_result = self.registry.sre.run(Task(stage="sre", objective=mission, priority=Priority.HIGH))
+        steps.extend([qa_result, qa_automation_result, security_result, devops_result, sre_result])
 
         analytics_result = self.registry.analytics.run(Task(stage="analytics", objective=mission))
+        product_analyst_result = self.registry.product_analyst.run(Task(stage="product_analytics", objective=mission))
         growth_result = self.registry.growth.run(Task(stage="growth", objective=mission))
+        legal_result = self.registry.legal.run(Task(stage="legal_compliance", objective=mission))
+        crm_retention_result = self.registry.crm_retention.run(Task(stage="crm_retention", objective=mission))
         support_result = self.registry.support.run(Task(stage="support_ops", objective=mission))
-        steps.extend([analytics_result, growth_result, support_result])
+        steps.extend([analytics_result, product_analyst_result, growth_result, legal_result, crm_retention_result, support_result])
 
         decision_result = self.registry.decision.run(Task(stage="decision", objective=mission, priority=Priority.CRITICAL))
         steps.append(decision_result)
@@ -42,7 +47,7 @@ class Orchestrator:
         decisions.extend(
             [
                 "Core path locked: search -> venue modal -> quote -> booking -> review",
-                "Owner path locked: register -> subscription 1500 RUB/month -> publish",
+                "Owner path locked: register -> subscription 2000 RUB/month -> publish",
                 "Release rule: QA + Security + DevOps gates are mandatory",
             ]
         )

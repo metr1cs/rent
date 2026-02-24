@@ -1,0 +1,51 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  build-and-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - name: Install Dependencies
+        run: npm ci
+
+      - name: Build
+        run: npm run build
+
+      - name: Start API
+        run: nohup npm run start -w apps/api > /tmp/api.log 2>&1 &
+
+      - name: Start Web
+        run: nohup npm run start -w apps/web > /tmp/web.log 2>&1 &
+
+      - name: Wait For Services
+        run: |
+          for i in {1..30}; do
+            if curl -sS http://localhost:8090/health >/dev/null && curl -sS http://localhost:4173/catalog >/dev/null; then
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "Services did not start in time"
+          cat /tmp/api.log || true
+          cat /tmp/web.log || true
+          exit 1
+
+      - name: Smoke Catalog
+        run: API_BASE_URL=http://localhost:8090 WEB_BASE_URL=http://localhost:4173 npm run smoke:catalog
+
+      - name: Smoke Trust
+        run: API_BASE_URL=http://localhost:8090 npm run smoke:trust

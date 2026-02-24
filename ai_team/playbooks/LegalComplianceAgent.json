@@ -1,0 +1,15 @@
+{
+  "agent": "LegalComplianceAgent",
+  "version": [
+    "v1",
+    "20260223"
+  ],
+  "focus": [
+    "privacy and personal data compliance",
+    "risk prevention in user communication"
+  ],
+  "tighten": [
+    "verify legal links and disclosures"
+  ],
+  "relax": []
+}

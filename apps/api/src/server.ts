@@ -1,13 +1,163 @@
+import "dotenv/config";
 import cors from "cors";
 import express from "express";
 import { z } from "zod";
-import { categories, leadRequests, owners, recalculateVenueRating, reviews, venues } from "./data.js";
+import { analyticsEvents, categories, leadRequests, owners, payments, recalculateVenueRating, reviewModerationAudit, reviews, venues } from "./data.js";
+import { initDataStore, persistStateSync } from "./persistence.js";
 
 const app = express();
 const port = Number(process.env.PORT ?? 8090);
+const host = process.env.HOST;
+const telegramBotToken = process.env.TELEGRAM_BOT_TOKEN ?? "";
+const telegramChatId = process.env.TELEGRAM_CHAT_ID ?? "";
+const adminNotifyKey = process.env.ADMIN_NOTIFY_KEY ?? "";
+const autoBillingNotifierEnabled = process.env.AUTO_BILLING_NOTIFIER === "true";
+const billingNotifierIntervalMinutes = Number(process.env.BILLING_NOTIFIER_INTERVAL_MINUTES ?? 60);
+const reminderSendRegistry = new Set<string>();
 
 app.use(cors());
 app.use(express.json());
+initDataStore();
+
+async function sendTelegramNotification(text: string): Promise<void> {
+  if (!telegramBotToken || !telegramChatId) return;
+  try {
+    await fetch(`https://api.telegram.org/bot${telegramBotToken}/sendMessage`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        chat_id: telegramChatId,
+        text,
+        disable_web_page_preview: true
+      })
+    });
+  } catch (error) {
+    console.error("Telegram notify failed", error);
+  }
+}
+
+function startOfDayStamp(dateString: string): number {
+  return new Date(`${dateString}T00:00:00`).getTime();
+}
+
+function todayStamp(): number {
+  const now = new Date();
+  const current = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  return current.getTime();
+}
+
+function billingDaysDiff(targetDate: string): number {
+  return Math.floor((startOfDayStamp(targetDate) - todayStamp()) / 86400000);
+}
+
+function ensureOwnerBillingStatus(ownerId: string): void {
+  const owner = owners.find((item) => item.id === ownerId);
+  if (!owner || !owner.nextBillingDate) return;
+  const daysDiff = billingDaysDiff(owner.nextBillingDate);
+  if (daysDiff < 0 && owner.subscriptionStatus !== "inactive") {
+    owner.subscriptionStatus = "inactive";
+    persistStateSync();
+  }
+}
+
+function computeDebtors() {
+  return owners
+    .filter((owner) => Boolean(owner.nextBillingDate))
+    .map((owner) => {
+      const daysDiff = billingDaysDiff(owner.nextBillingDate!);
+      return {
+        owner,
+        daysDiff
+      };
+    })
+    .filter((item) => item.daysDiff < 0)
+    .map((item) => ({
+      ownerId: item.owner.id,
+      name: item.owner.name,
+      email: item.owner.email,
+      nextBillingDate: item.owner.nextBillingDate!,
+      daysOverdue: Math.abs(item.daysDiff),
+      amountDueRub: 2000
+    }));
+}
+
+function trackEvent(
+  event:
+    | "home_view"
+    | "catalog_view"
+    | "category_open"
+    | "category_filter_apply"
+    | "venue_view"
+    | "lead_submit"
+    | "owner_register"
+    | "owner_login",
+  meta: Record<string, string | number | boolean>
+): void {
+  analyticsEvents.push({
+    id: `E-${analyticsEvents.length + 1}`,
+    event,
+    createdAt: new Date().toISOString(),
+    meta
+  });
+  persistStateSync();
+}
+
+function runBillingReminderDispatch(): { sent: number; reminders3Days: number; reminders1Day: number; debtors: number } {
+  owners.forEach((item) => ensureOwnerBillingStatus(item.id));
+
+  let sent = 0;
+  let reminders3Days = 0;
+  let reminders1Day = 0;
+  let debtors = 0;
+
+  owners.forEach((owner) => {
+    if (!owner.nextBillingDate) return;
+    const daysDiff = billingDaysDiff(owner.nextBillingDate);
+
+    if (daysDiff === 3 || daysDiff === 1) {
+      const key = `${owner.id}:${owner.nextBillingDate}:${daysDiff}`;
+      if (!reminderSendRegistry.has(key)) {
+        reminderSendRegistry.add(key);
+        sent += 1;
+        if (daysDiff === 3) reminders3Days += 1;
+        if (daysDiff === 1) reminders1Day += 1;
+        void sendTelegramNotification(
+          [
+            "Напоминание об оплате",
+            `Арендодатель: ${owner.name}`,
+            `Email: ${owner.email}`,
+            `До продления: ${daysDiff} ${daysDiff === 1 ? "день" : "дня"}`,
+            "Сумма: 2000 ₽",
+            `Дата оплаты: ${owner.nextBillingDate}`
+          ].join("\n")
+        );
+      }
+    }
+
+    if (daysDiff < 0) debtors += 1;
+  });
+
+  const debtorRows = computeDebtors();
+  debtorRows.forEach((debtor) => {
+    const key = `${debtor.ownerId}:${debtor.nextBillingDate}:overdue`;
+    if (!reminderSendRegistry.has(key)) {
+      reminderSendRegistry.add(key);
+      sent += 1;
+      void sendTelegramNotification(
+        [
+          "Должник по подписке",
+          `Имя: ${debtor.name}`,
+          `Email: ${debtor.email}`,
+          `Просрочка: ${debtor.daysOverdue} дн.`,
+          `К оплате: ${debtor.amountDueRub} ₽`,
+          `Плановая дата оплаты: ${debtor.nextBillingDate}`
+        ].join("\n")
+      );
+    }
+  });
+
+  return { sent, reminders3Days, reminders1Day, debtors };
+}
 
 app.get("/health", (_req, res) => {
   res.json({ status: "ok", service: "vmestoru-api" });
@@ -21,6 +171,69 @@ app.get("/api/categories", (_req, res) => {
   res.json(categories);
 });
 
+app.post("/api/analytics/event", (req, res) => {
+  const schema = z.object({
+    event: z.enum(["home_view", "catalog_view", "category_open", "category_filter_apply", "venue_view", "lead_submit", "owner_register", "owner_login"]),
+    meta: z.record(z.union([z.string(), z.number(), z.boolean()])).default({})
+  });
+  const parsed = schema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ message: "Invalid event payload" });
+  trackEvent(parsed.data.event, parsed.data.meta);
+  return res.status(201).json({ ok: true });
+});
+
+app.get("/api/admin/analytics/funnel", (req, res) => {
+  const key = String(req.headers["x-admin-key"] ?? "");
+  if (!adminNotifyKey || key !== adminNotifyKey) return res.status(403).json({ message: "Forbidden" });
+
+  const counts = {
+    homeView: analyticsEvents.filter((item) => item.event === "home_view").length,
+    catalogView: analyticsEvents.filter((item) => item.event === "catalog_view").length,
+    categoryOpen: analyticsEvents.filter((item) => item.event === "category_open").length,
+    categoryFilterApply: analyticsEvents.filter((item) => item.event === "category_filter_apply").length,
+    venueView: analyticsEvents.filter((item) => item.event === "venue_view").length,
+    leadSubmit: analyticsEvents.filter((item) => item.event === "lead_submit").length,
+    ownerRegister: analyticsEvents.filter((item) => item.event === "owner_register").length,
+    ownerLogin: analyticsEvents.filter((item) => item.event === "owner_login").length
+  };
+
+  return res.json({
+    counts,
+    conversion: {
+      catalogToCategory: counts.catalogView ? Number(((counts.categoryOpen / counts.catalogView) * 100).toFixed(1)) : 0,
+      categoryToVenue: counts.categoryOpen ? Number(((counts.venueView / counts.categoryOpen) * 100).toFixed(1)) : 0,
+      homeToVenue: counts.homeView ? Number(((counts.venueView / counts.homeView) * 100).toFixed(1)) : 0,
+      venueToLead: counts.venueView ? Number(((counts.leadSubmit / counts.venueView) * 100).toFixed(1)) : 0
+    }
+  });
+});
+
+app.get("/api/admin/ops/readiness", (req, res) => {
+  const key = String(req.headers["x-admin-key"] ?? "");
+  if (!adminNotifyKey || key !== adminNotifyKey) return res.status(403).json({ message: "Forbidden" });
+
+  const checks = {
+    qaSmokeConfigured: true,
+    reviewModerationEnabled: true,
+    telegramNotificationsReady: Boolean(telegramBotToken && telegramChatId),
+    legalCheckpointEnabled: true,
+    supportEscalationMatrixReady: true,
+    paymentMode: "mock" as const,
+  };
+  const blockedBy = checks.paymentMode === "mock" ? ["real_acquiring_not_enabled"] : [];
+
+  return res.json({
+    readyForProduction: blockedBy.length === 0,
+    checks,
+    blockedBy,
+    recommendations: [
+      "Enable real acquiring before public launch",
+      "Keep review moderation queue below 24h SLA",
+      "Review legal disclosures each release"
+    ]
+  });
+});
+
 app.get("/api/home/featured-categories", (_req, res) => {
   const payload = categories
     .filter((item) => item.featured)
@@ -29,7 +242,7 @@ app.get("/api/home/featured-categories", (_req, res) => {
       venues: venues
         .filter((venue) => venue.category === category.name)
         .sort((a, b) => b.rating - a.rating)
-        .slice(0, 12)
+        .slice(0, 8)
     }));
 
   res.json(payload);
@@ -41,7 +254,11 @@ const venueQuerySchema = z.object({
   region: z.string().optional(),
   date: z.string().optional(),
   capacity: z.coerce.number().int().positive().optional(),
-  sort: z.enum(["recommended", "price_asc", "price_desc", "rating_desc"]).optional()
+  sort: z.enum(["recommended", "price_asc", "price_desc", "rating_desc"]).optional(),
+  parking: z.coerce.boolean().optional(),
+  stage: z.coerce.boolean().optional(),
+  late: z.coerce.boolean().optional(),
+  instant: z.coerce.boolean().optional(),
 });
 
 app.get("/api/venues", (req, res) => {
@@ -50,7 +267,7 @@ app.get("/api/venues", (req, res) => {
     return res.status(400).json({ message: "Invalid query" });
   }
 
-  const { q, category, region, date, capacity, sort } = parsed.data;
+  const { q, category, region, date, capacity, sort, parking, stage, late, instant } = parsed.data;
 
   const filtered = venues.filter((venue) => {
     const qPass = q
@@ -60,8 +277,12 @@ app.get("/api/venues", (req, res) => {
     const regionPass = region ? venue.region === region : true;
     const datePass = date ? venue.nextAvailableDates.includes(date) : true;
     const capacityPass = capacity ? venue.capacity >= capacity : true;
+    const parkingPass = parking ? venue.amenities.includes("Парковка") : true;
+    const stagePass = stage ? venue.amenities.includes("Сцена") : true;
+    const latePass = late ? venue.cancellationPolicy.toLowerCase().includes("72") : true;
+    const instantPass = instant ? venue.instantBooking : true;
 
-    return qPass && categoryPass && regionPass && datePass && capacityPass;
+    return qPass && categoryPass && regionPass && datePass && capacityPass && parkingPass && stagePass && latePass && instantPass;
   });
 
   const sorted = [...filtered];
@@ -76,22 +297,95 @@ app.get("/api/venues", (req, res) => {
 app.get("/api/venues/:id", (req, res) => {
   const venue = venues.find((item) => item.id === req.params.id);
   if (!venue) return res.status(404).json({ message: "Venue not found" });
+  trackEvent("venue_view", { venueId: venue.id, region: venue.region, category: venue.category });
   return res.json(venue);
+});
+
+app.get("/api/venues/:id/similar", (req, res) => {
+  const venue = venues.find((item) => item.id === req.params.id);
+  if (!venue) return res.status(404).json({ message: "Venue not found" });
+
+  const similar = venues
+    .filter((item) => item.id !== venue.id)
+    .map((item) => {
+      let score = 0;
+      if (item.category === venue.category) score += 3;
+      if (item.region === venue.region) score += 2;
+      const ratio = Math.min(item.pricePerHour, venue.pricePerHour) / Math.max(item.pricePerHour, venue.pricePerHour);
+      score += ratio;
+      return { item, score };
+    })
+    .sort((a, b) => b.score - a.score)
+    .slice(0, 8)
+    .map((row) => row.item);
+
+  return res.json(similar);
 });
 
 app.get("/api/venues/:id/reviews", (req, res) => {
   const venue = venues.find((item) => item.id === req.params.id);
   if (!venue) return res.status(404).json({ message: "Venue not found" });
 
-  const venueReviews = reviews.filter((item) => item.venueId === venue.id).sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+  const venueReviews = reviews
+    .filter((item) => item.venueId === venue.id && item.status === "published")
+    .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
   return res.json(venueReviews);
 });
 
 const reviewSchema = z.object({
   author: z.string().min(2),
+  requesterName: z.string().min(2),
+  requesterPhone: z.string().min(6),
   rating: z.number().int().min(1).max(5),
   text: z.string().min(4).max(600)
 });
+
+function normalizePhone(value: string): string {
+  return value.replace(/[^\d+]/g, "");
+}
+
+function evaluateReviewRisk(venueId: string, payload: { rating: number; text: string; requesterName: string; requesterPhone: string }): { riskScore: number; riskFlags: string[] } {
+  let riskScore = 0;
+  const riskFlags: string[] = [];
+
+  if (payload.rating <= 1 || payload.rating >= 5) {
+    riskScore += 10;
+    riskFlags.push("extreme_rating");
+  }
+  if (payload.text.trim().length < 20) {
+    riskScore += 20;
+    riskFlags.push("very_short_text");
+  }
+  const suspiciousWords = ["обман", "мошенник", "развод", "конкурент"];
+  if (suspiciousWords.some((item) => payload.text.toLowerCase().includes(item))) {
+    riskScore += 20;
+    riskFlags.push("suspicious_keywords");
+  }
+
+  const normalizedPhone = normalizePhone(payload.requesterPhone);
+  const duplicateByVenue = reviews.some(
+    (item) =>
+      item.venueId === venueId &&
+      normalizePhone(item.requesterPhone) === normalizedPhone &&
+      item.requesterName.toLowerCase() === payload.requesterName.toLowerCase()
+  );
+  if (duplicateByVenue) {
+    riskScore += 60;
+    riskFlags.push("duplicate_reviewer_for_venue");
+  }
+
+  const sameReviewerWindow = reviews.filter((item) => {
+    if (normalizePhone(item.requesterPhone) !== normalizedPhone) return false;
+    const ageMs = Date.now() - new Date(item.createdAt).getTime();
+    return ageMs < 24 * 60 * 60 * 1000;
+  });
+  if (sameReviewerWindow.length >= 3) {
+    riskScore += 40;
+    riskFlags.push("high_frequency_24h");
+  }
+
+  return { riskScore: Math.min(100, riskScore), riskFlags };
+}
 
 app.post("/api/venues/:id/reviews", (req, res) => {
   const venue = venues.find((item) => item.id === req.params.id);
@@ -100,16 +394,120 @@ app.post("/api/venues/:id/reviews", (req, res) => {
   const parsed = reviewSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ message: "Invalid review payload" });
 
+  const confirmedLead = leadRequests.find(
+    (item) =>
+      item.venueId === venue.id &&
+      item.status === "confirmed" &&
+      item.name.toLowerCase() === parsed.data.requesterName.toLowerCase() &&
+      normalizePhone(item.phone) === normalizePhone(parsed.data.requesterPhone)
+  );
+  if (!confirmedLead) {
+    return res.status(403).json({
+      message: "Отзыв доступен только после подтвержденной заявки на площадку"
+    });
+  }
+
+  const risk = evaluateReviewRisk(venue.id, parsed.data);
+  const status: "pending" | "published" = risk.riskScore >= 60 ? "pending" : "published";
   const created = {
     id: `R-${reviews.length + 1}`,
     venueId: venue.id,
-    createdAt: new Date().toISOString().slice(0, 10),
-    ...parsed.data
+    createdAt: new Date().toISOString(),
+    ...parsed.data,
+    sourceLeadRequestId: confirmedLead.id,
+    verified: true,
+    status,
+    riskScore: risk.riskScore,
+    riskFlags: risk.riskFlags
   };
 
   reviews.push(created);
   recalculateVenueRating(venue.id);
-  return res.status(201).json(created);
+  persistStateSync();
+  return res.status(201).json({
+    review: created,
+    moderation: {
+      status,
+      riskScore: risk.riskScore,
+      riskFlags: risk.riskFlags
+    }
+  });
+});
+
+app.get("/api/admin/reviews", (req, res) => {
+  const key = String(req.headers["x-admin-key"] ?? "");
+  if (!adminNotifyKey || key !== adminNotifyKey) return res.status(403).json({ message: "Forbidden" });
+
+  const status = String(req.query.status ?? "");
+  const filtered = status
+    ? reviews.filter((item) => item.status === status)
+    : reviews;
+  return res.json(
+    filtered
+      .map((item) => ({
+        ...item,
+        venueTitle: venues.find((venue) => venue.id === item.venueId)?.title ?? "Unknown venue"
+      }))
+      .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+  );
+});
+
+const reviewModerationSchema = z.object({
+  status: z.enum(["published", "hidden"]),
+  note: z.string().max(400).optional(),
+  moderator: z.string().min(2).max(80).optional()
+});
+
+app.post("/api/admin/reviews/:id/moderate", (req, res) => {
+  const key = String(req.headers["x-admin-key"] ?? "");
+  if (!adminNotifyKey || key !== adminNotifyKey) return res.status(403).json({ message: "Forbidden" });
+
+  const parsed = reviewModerationSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ message: "Invalid moderation payload" });
+
+  const review = reviews.find((item) => item.id === req.params.id);
+  if (!review) return res.status(404).json({ message: "Review not found" });
+
+  const previousStatus = review.status;
+  review.status = parsed.data.status;
+  if (parsed.data.note) {
+    review.riskFlags = [...review.riskFlags, `moderator_note:${parsed.data.note}`];
+  }
+  reviewModerationAudit.push({
+    id: `RA-${reviewModerationAudit.length + 1}`,
+    reviewId: review.id,
+    venueId: review.venueId,
+    previousStatus,
+    nextStatus: parsed.data.status,
+    note: parsed.data.note,
+    moderator: parsed.data.moderator ?? "admin",
+    createdAt: new Date().toISOString()
+  });
+  recalculateVenueRating(review.venueId);
+  persistStateSync();
+  return res.json({ message: "Review moderated", review });
+});
+
+app.get("/api/admin/reviews/summary", (req, res) => {
+  const key = String(req.headers["x-admin-key"] ?? "");
+  if (!adminNotifyKey || key !== adminNotifyKey) return res.status(403).json({ message: "Forbidden" });
+
+  const pending = reviews.filter((item) => item.status === "pending");
+  const published = reviews.filter((item) => item.status === "published");
+  const hidden = reviews.filter((item) => item.status === "hidden");
+  const highRiskPending = pending.filter((item) => item.riskScore >= 60).length;
+
+  return res.json({
+    total: reviews.length,
+    pending: pending.length,
+    published: published.length,
+    hidden: hidden.length,
+    highRiskPending,
+    avgRiskPending: pending.length
+      ? Number((pending.reduce((sum, item) => sum + item.riskScore, 0) / pending.length).toFixed(1))
+      : 0,
+    recentActions: reviewModerationAudit.slice(-20).reverse()
+  });
 });
 
 const leadSchema = z.object({
@@ -129,11 +527,85 @@ app.post("/api/venues/:id/requests", (req, res) => {
     id: `L-${leadRequests.length + 1}`,
     venueId: venue.id,
     createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+    status: "new" as const,
     ...parsed.data
   };
 
   leadRequests.push(created);
+  trackEvent("lead_submit", { venueId: venue.id, region: venue.region, category: venue.category });
+  persistStateSync();
+  void sendTelegramNotification(
+    [
+      "Новая заявка на площадку",
+      `Площадка: ${venue.title}`,
+      `Имя: ${created.name}`,
+      `Телефон: ${created.phone}`,
+      `Комментарий: ${created.comment || "-"}`,
+      `Дата: ${new Date(created.createdAt).toLocaleString("ru-RU")}`
+    ].join("\n")
+  );
   return res.status(201).json({ message: "Заявка отправлена арендодателю", request: created });
+});
+
+app.get("/api/owner/requests", (req, res) => {
+  const ownerId = String(req.query.ownerId ?? "");
+  const statusFilter = String(req.query.status ?? "");
+  const q = String(req.query.q ?? "").trim().toLowerCase();
+  const sla = String(req.query.sla ?? "");
+  if (!ownerId) return res.status(400).json({ message: "ownerId is required" });
+
+  const ownerVenueMap = new Map(
+    venues
+      .filter((item) => item.ownerId === ownerId)
+      .map((item) => [item.id, item] as const)
+  );
+
+  const payload = leadRequests
+    .filter((item) => ownerVenueMap.has(item.venueId))
+    .map((item) => {
+      const venue = ownerVenueMap.get(item.venueId)!;
+      const ageMinutes = Math.floor((Date.now() - new Date(item.createdAt).getTime()) / 60000);
+      return {
+        ...item,
+        venueTitle: venue.title,
+        venueAddress: venue.address,
+        responseSlaMinutes: 30,
+        ageMinutes,
+        isSlaBreached: item.status === "new" && ageMinutes > 30
+      };
+    })
+    .filter((item) => (statusFilter ? item.status === statusFilter : true))
+    .filter((item) => (q ? `${item.name} ${item.phone} ${item.venueTitle}`.toLowerCase().includes(q) : true))
+    .filter((item) => {
+      if (sla === "breached") return item.isSlaBreached;
+      if (sla === "ok") return !item.isSlaBreached;
+      return true;
+    })
+    .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+
+  return res.json(payload);
+});
+
+const ownerLeadStatusSchema = z.object({
+  ownerId: z.string().min(2),
+  status: z.enum(["new", "in_progress", "call_scheduled", "confirmed", "rejected"])
+});
+
+app.post("/api/owner/requests/:id/status", (req, res) => {
+  const parsed = ownerLeadStatusSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ message: "Invalid status payload" });
+
+  const request = leadRequests.find((item) => item.id === req.params.id);
+  if (!request) return res.status(404).json({ message: "Request not found" });
+
+  const venue = venues.find((item) => item.id === request.venueId);
+  if (!venue || venue.ownerId !== parsed.data.ownerId) return res.status(403).json({ message: "Forbidden" });
+
+  request.status = parsed.data.status;
+  request.updatedAt = new Date().toISOString();
+  persistStateSync();
+  return res.json({ message: "Статус обновлен", request });
 });
 
 const ownerRegisterSchema = z.object({
@@ -161,7 +633,34 @@ app.post("/api/owner/register", (req, res) => {
   };
 
   owners.push(owner);
+  trackEvent("owner_register", { ownerId: owner.id });
+  persistStateSync();
+  void sendTelegramNotification(
+    [
+      "Новый арендодатель зарегистрирован",
+      `Имя: ${owner.name}`,
+      `Email: ${owner.email}`,
+      `ID: ${owner.id}`,
+      `Дата: ${new Date().toLocaleString("ru-RU")}`
+    ].join("\n")
+  );
   return res.status(201).json({ owner: { ...owner, password: undefined } });
+});
+
+app.post("/api/admin/notify/test", (req, res) => {
+  const key = String(req.headers["x-admin-key"] ?? "");
+  if (!adminNotifyKey || key !== adminNotifyKey) {
+    return res.status(403).json({ message: "Forbidden" });
+  }
+
+  void sendTelegramNotification(
+    [
+      "Тест уведомления VmestoRu",
+      `Сервер: vmestoru-api`,
+      `Время: ${new Date().toLocaleString("ru-RU")}`
+    ].join("\n")
+  );
+  return res.json({ message: "Тестовое уведомление отправлено" });
 });
 
 const ownerLoginSchema = z.object({
@@ -175,6 +674,8 @@ app.post("/api/owner/login", (req, res) => {
 
   const owner = owners.find((item) => item.email.toLowerCase() === parsed.data.email.toLowerCase() && item.password === parsed.data.password);
   if (!owner) return res.status(401).json({ message: "Invalid credentials" });
+  ensureOwnerBillingStatus(owner.id);
+  trackEvent("owner_login", { ownerId: owner.id });
 
   return res.json({ owner: { ...owner, password: undefined } });
 });
@@ -190,6 +691,26 @@ app.post("/api/owner/subscription/checkout", (req, res) => {
 
   owner.subscriptionStatus = "active";
   owner.nextBillingDate = new Date(Date.now() + 30 * 86400000).toISOString().slice(0, 10);
+  payments.push({
+    id: `P-${payments.length + 1}`,
+    ownerId: owner.id,
+    amountRub: 2000,
+    periodDays: 30,
+    status: "paid",
+    paidAt: new Date().toISOString(),
+    nextBillingDate: owner.nextBillingDate,
+    method: "mock"
+  });
+  persistStateSync();
+  void sendTelegramNotification(
+    [
+      "Оплата подписки получена",
+      `Арендодатель: ${owner.name}`,
+      `Email: ${owner.email}`,
+      "Сумма: 2000 ₽",
+      `Следующее списание: ${owner.nextBillingDate}`
+    ].join("\n")
+  );
 
   return res.json({
     message: "Подписка активирована",
@@ -205,13 +726,17 @@ app.get("/api/owner/subscription/status", (req, res) => {
   const ownerId = String(req.query.ownerId ?? "");
   const owner = owners.find((item) => item.id === ownerId);
   if (!owner) return res.status(404).json({ message: "Owner not found" });
+  ensureOwnerBillingStatus(owner.id);
+  const daysDiff = owner.nextBillingDate ? billingDaysDiff(owner.nextBillingDate) : null;
 
   return res.json({
     ownerId: owner.id,
     status: owner.subscriptionStatus,
     nextBillingDate: owner.nextBillingDate,
     plan: owner.subscriptionPlan,
-    amountRub: 2000
+    amountRub: 2000,
+    daysUntilBilling: daysDiff,
+    isDebtor: daysDiff !== null ? daysDiff < 0 : false
   });
 });
 
@@ -226,7 +751,7 @@ const ownerVenueSchema = z.object({
   pricePerHour: z.number().int().positive(),
   description: z.string().min(10),
   amenities: z.array(z.string().min(2)),
-  images: z.array(z.string().url()).min(1)
+  images: z.array(z.string().url()).min(3)
 });
 
 app.get("/api/owner/venues", (req, res) => {
@@ -234,9 +759,124 @@ app.get("/api/owner/venues", (req, res) => {
   return res.json(venues.filter((item) => item.ownerId === ownerId));
 });
 
+app.get("/api/owner/dashboard", (req, res) => {
+  const ownerId = String(req.query.ownerId ?? "");
+  ensureOwnerBillingStatus(ownerId);
+  const ownerVenues = venues.filter((item) => item.ownerId === ownerId);
+  const ownerVenueIds = new Set(ownerVenues.map((item) => item.id));
+  const ownerRequests = leadRequests.filter((item) => ownerVenueIds.has(item.venueId));
+
+  const completeness = ownerVenues.map((venue) => {
+    const checks = [
+      Boolean(venue.title),
+      Boolean(venue.description && venue.description.length >= 20),
+      Boolean(venue.address),
+      venue.images.length >= 3,
+      venue.amenities.length >= 4,
+      venue.pricePerHour > 0,
+      venue.capacity > 0,
+    ];
+    const score = Math.round((checks.filter(Boolean).length / checks.length) * 100);
+    return {
+      venueId: venue.id,
+      venueTitle: venue.title,
+      score,
+      tip: score >= 85 ? "Карточка заполнена хорошо" : "Добавьте больше фото и деталей для роста конверсии"
+    };
+  });
+
+  const statusCounts = {
+    new: ownerRequests.filter((item) => item.status === "new").length,
+    in_progress: ownerRequests.filter((item) => item.status === "in_progress").length,
+    call_scheduled: ownerRequests.filter((item) => item.status === "call_scheduled").length,
+    confirmed: ownerRequests.filter((item) => item.status === "confirmed").length,
+    rejected: ownerRequests.filter((item) => item.status === "rejected").length,
+  };
+
+  return res.json({
+    ownerId,
+    metrics: {
+      venuesTotal: ownerVenues.length,
+      leadsTotal: ownerRequests.length,
+      confirmedTotal: statusCounts.confirmed,
+      conversionRate: ownerRequests.length ? Number(((statusCounts.confirmed / ownerRequests.length) * 100).toFixed(1)) : 0,
+      viewsMock: ownerVenues.length * 137 + 420
+    },
+    statusCounts,
+    completeness
+  });
+});
+
+app.get("/api/admin/billing/overview", (req, res) => {
+  const key = String(req.headers["x-admin-key"] ?? "");
+  if (!adminNotifyKey || key !== adminNotifyKey) return res.status(403).json({ message: "Forbidden" });
+
+  owners.forEach((item) => ensureOwnerBillingStatus(item.id));
+  const debtors = computeDebtors();
+  const paidTotal = payments.filter((item) => item.status === "paid").reduce((sum, item) => sum + item.amountRub, 0);
+
+  return res.json({
+    metrics: {
+      ownersTotal: owners.length,
+      activeOwners: owners.filter((item) => item.subscriptionStatus === "active").length,
+      debtorsTotal: debtors.length,
+      debtAmountRub: debtors.reduce((sum, item) => sum + item.amountDueRub, 0),
+      paymentsTotal: payments.length,
+      paidTotalRub: paidTotal
+    },
+    debtors,
+    payments: payments.slice(-20).reverse()
+  });
+});
+
+app.post("/api/admin/billing/notify-debtors", (req, res) => {
+  const key = String(req.headers["x-admin-key"] ?? "");
+  if (!adminNotifyKey || key !== adminNotifyKey) return res.status(403).json({ message: "Forbidden" });
+
+  owners.forEach((item) => ensureOwnerBillingStatus(item.id));
+  const debtors = computeDebtors();
+  if (!debtors.length) return res.json({ message: "Должников нет", sent: 0 });
+
+  debtors.forEach((debtor) => {
+    void sendTelegramNotification(
+      [
+        "Должник по подписке",
+        `Имя: ${debtor.name}`,
+        `Email: ${debtor.email}`,
+        `Просрочка: ${debtor.daysOverdue} дн.`,
+        `К оплате: ${debtor.amountDueRub} ₽`,
+        `Плановая дата оплаты: ${debtor.nextBillingDate}`
+      ].join("\n")
+    );
+  });
+
+  return res.json({
+    message: "Уведомления по должникам отправлены",
+    sent: debtors.length,
+    debtors
+  });
+});
+
+app.post("/api/admin/billing/reminders/run", (req, res) => {
+  const key = String(req.headers["x-admin-key"] ?? "");
+  if (!adminNotifyKey || key !== adminNotifyKey) return res.status(403).json({ message: "Forbidden" });
+
+  const result = runBillingReminderDispatch();
+  return res.json({
+    message: "Напоминания и уведомления обработаны",
+    ...result
+  });
+});
+
 app.post("/api/owner/venues", (req, res) => {
   const parsed = ownerVenueSchema.safeParse(req.body);
-  if (!parsed.success) return res.status(400).json({ message: "Invalid venue payload" });
+  if (!parsed.success) {
+    const imageIssue = parsed.error.issues.find((issue) => issue.path.join(".") === "images");
+    if (imageIssue) {
+      return res.status(400).json({ message: "Нужно добавить минимум 3 фото площадки" });
+    }
+    return res.status(400).json({ message: "Invalid venue payload" });
+  }
 
   const owner = owners.find((item) => item.id === parsed.data.ownerId);
   if (!owner) return res.status(404).json({ message: "Owner not found" });
@@ -255,6 +895,7 @@ app.post("/api/owner/venues", (req, res) => {
   };
 
   venues.push(created);
+  persistStateSync();
   return res.status(201).json(created);
 });
 
@@ -302,6 +943,23 @@ app.post("/api/ai/search", (req, res) => {
   });
 });
 
-app.listen(port, () => {
-  console.log(`API running on http://localhost:${port}`);
-});
+const onServerStarted = () => {
+  const logHost = host ?? "localhost";
+  console.log(`API running on http://${logHost}:${port}`);
+  if (autoBillingNotifierEnabled) {
+    const intervalMs = Math.max(5, billingNotifierIntervalMinutes) * 60 * 1000;
+    setInterval(() => {
+      const result = runBillingReminderDispatch();
+      if (result.sent > 0) {
+        console.log(`Billing notifier sent ${result.sent} notifications`);
+      }
+    }, intervalMs);
+    console.log(`Billing notifier enabled, interval ${Math.max(5, billingNotifierIntervalMinutes)} min`);
+  }
+};
+
+if (host) {
+  app.listen(port, host, onServerStarted);
+} else {
+  app.listen(port, onServerStarted);
+}

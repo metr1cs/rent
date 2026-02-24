@@ -1,0 +1,15 @@
+{
+  "agent": "ProductAnalystAgent",
+  "version": [
+    "v1",
+    "20260223"
+  ],
+  "focus": [
+    "funnel visibility",
+    "metric-driven product decisions"
+  ],
+  "tighten": [
+    "require measurable KPI for each feature"
+  ],
+  "relax": []
+}

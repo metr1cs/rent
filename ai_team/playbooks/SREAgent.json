@@ -1,0 +1,15 @@
+{
+  "agent": "SREAgent",
+  "version": [
+    "v1",
+    "20260223"
+  ],
+  "focus": [
+    "stability and recoverability",
+    "operational readiness"
+  ],
+  "tighten": [
+    "enforce incident response checklist"
+  ],
+  "relax": []
+}

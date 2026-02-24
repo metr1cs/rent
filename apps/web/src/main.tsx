@@ -1,6 +1,8 @@
 import React, { FormEvent, useEffect, useMemo, useState } from "react";
 import { createRoot } from "react-dom/client";
-import { BrowserRouter, Link, Route, Routes, useNavigate, useParams } from "react-router-dom";
+import { BrowserRouter, Link, NavLink, Route, Routes, useLocation, useNavigate, useParams, useSearchParams } from "react-router-dom";
+import { DayPicker } from "react-day-picker";
+import "react-day-picker/style.css";
 import "./styles.css";
 
 type Category = { id: string; name: string; featured: boolean };
@@ -25,13 +27,95 @@ type Venue = {
   cancellationPolicy: string;
   phone: string;
 };
-type Review = { id: string; venueId: string; author: string; rating: number; text: string; createdAt: string };
+type Review = {
+  id: string;
+  venueId: string;
+  author: string;
+  rating: number;
+  text: string;
+  createdAt: string;
+  verified?: boolean;
+  status?: "pending" | "published" | "hidden";
+};
+type AdminReview = Review & {
+  requesterName: string;
+  requesterPhone: string;
+  sourceLeadRequestId: string;
+  riskScore: number;
+  riskFlags: string[];
+  venueTitle: string;
+};
+type AdminReviewSummary = {
+  total: number;
+  pending: number;
+  published: number;
+  hidden: number;
+  highRiskPending: number;
+  avgRiskPending: number;
+  recentActions: Array<{
+    id: string;
+    reviewId: string;
+    previousStatus: "pending" | "published" | "hidden";
+    nextStatus: "published" | "hidden";
+    moderator: string;
+    createdAt: string;
+    note?: string;
+  }>;
+};
 type Owner = {
   id: string;
   name: string;
   email: string;
   subscriptionStatus: "inactive" | "active";
   nextBillingDate: string | null;
+};
+type QuickFilters = {
+  parking: boolean;
+  stage: boolean;
+  late: boolean;
+  instant: boolean;
+};
+type SavedSearch = {
+  id: string;
+  label: string;
+  query: string;
+  region: string;
+  category: string;
+  capacity: string;
+  date: string;
+  sort: string;
+  quickFilters: QuickFilters;
+};
+type OwnerLead = {
+  id: string;
+  venueId: string;
+  venueTitle: string;
+  venueAddress: string;
+  name: string;
+  phone: string;
+  comment: string;
+  createdAt: string;
+  status: "new" | "in_progress" | "call_scheduled" | "confirmed" | "rejected";
+  responseSlaMinutes: number;
+  ageMinutes: number;
+  isSlaBreached: boolean;
+};
+type OwnerDashboard = {
+  ownerId: string;
+  metrics: {
+    venuesTotal: number;
+    leadsTotal: number;
+    confirmedTotal: number;
+    conversionRate: number;
+    viewsMock: number;
+  };
+  statusCounts: Record<OwnerLead["status"], number>;
+  completeness: Array<{
+    venueId: string;
+    venueTitle: string;
+    score: number;
+    tip: string;
+  }>;
 };
 
 type Theme = "light" | "dark";
@@ -43,9 +127,174 @@ const inferredApiBase =
     : "";
 const rawApiBase = envApiBase && envApiBase.length > 0 ? envApiBase : inferredApiBase;
 const API = rawApiBase.endsWith("/") ? rawApiBase.slice(0, -1) : rawApiBase;
+const SITE_URL = ((import.meta.env.VITE_SITE_URL as string | undefined)?.trim() || "https://vmestoru.ru").replace(/\/+$/, "");
+const DEFAULT_OG_IMAGE =
+  "https://images.unsplash.com/photo-1519167758481-83f550bb49b3?auto=format&fit=crop&w=1400&q=80";
+const CATEGORY_ART_ORDER = [
+  "Лофт",
+  "Банкетный зал",
+  "Ресторан для мероприятий",
+  "Конференц-зал",
+  "Переговорная",
+  "Фотостудия",
+  "Видеостудия / подкаст",
+  "Коворкинг / event-space",
+  "Выставочный зал",
+  "Арт-пространство",
+  "Концертная площадка",
+  "Театр / сцена",
+  "Спортзал / танцевальный",
+  "Детское пространство",
+  "Коттедж / загородный дом",
+  "База отдыха",
+  "Терраса / rooftop",
+  "Теплоход / яхта",
+  "Шоурум / pop-up",
+  "Универсальный зал",
+];
+
+function upsertMetaTag(
+  key: "name" | "property",
+  value: string,
+  content: string
+): void {
+  let tag = document.head.querySelector<HTMLMetaElement>(`meta[${key}="${value}"]`);
+  if (!tag) {
+    tag = document.createElement("meta");
+    tag.setAttribute(key, value);
+    document.head.appendChild(tag);
+  }
+  tag.setAttribute("content", content);
+}
+
+function upsertLinkTag(rel: string, href: string): void {
+  let link = document.head.querySelector<HTMLLinkElement>(`link[rel="${rel}"]`);
+  if (!link) {
+    link = document.createElement("link");
+    link.setAttribute("rel", rel);
+    document.head.appendChild(link);
+  }
+  link.setAttribute("href", href);
+}
+
+function syncAlternateLinks(canonical: string): void {
+  const entries = [
+    { hrefLang: "ru-RU", href: canonical },
+    { hrefLang: "x-default", href: canonical },
+  ];
+  document.head.querySelectorAll<HTMLLinkElement>('link[rel="alternate"][data-seo-alt="true"]').forEach((node) => node.remove());
+  entries.forEach((entry) => {
+    const link = document.createElement("link");
+    link.setAttribute("rel", "alternate");
+    link.setAttribute("hrefLang", entry.hrefLang);
+    link.setAttribute("href", entry.href);
+    link.setAttribute("data-seo-alt", "true");
+    document.head.appendChild(link);
+  });
+}
+
+function upsertJsonLd(id: string, payload: Record<string, unknown>): void {
+  let script = document.head.querySelector<HTMLScriptElement>(`script[data-seo="${id}"]`);
+  if (!script) {
+    script = document.createElement("script");
+    script.setAttribute("type", "application/ld+json");
+    script.setAttribute("data-seo", id);
+    document.head.appendChild(script);
+  }
+  script.textContent = JSON.stringify(payload);
+}
+
+function applySeo({
+  title,
+  description,
+  path,
+  image,
+  type = "website",
+  noindex = false,
+  jsonLd = [],
+}: {
+  title: string;
+  description: string;
+  path: string;
+  image?: string;
+  type?: "website" | "article";
+  noindex?: boolean;
+  jsonLd?: Array<{ id: string; payload: Record<string, unknown> }>;
+}): void {
+  const canonical = `${SITE_URL}${path.startsWith("/") ? path : `/${path}`}`;
+  const ogImage = image ?? DEFAULT_OG_IMAGE;
+  document.title = title;
+
+  upsertMetaTag("name", "description", description);
+  upsertMetaTag("name", "robots", noindex ? "noindex,nofollow" : "index,follow");
+  upsertMetaTag("property", "og:title", title);
+  upsertMetaTag("property", "og:description", description);
+  upsertMetaTag("property", "og:type", type);
+  upsertMetaTag("property", "og:locale", "ru_RU");
+  upsertMetaTag("property", "og:url", canonical);
+  upsertMetaTag("property", "og:image", ogImage);
+  upsertMetaTag("name", "twitter:card", "summary_large_image");
+  upsertMetaTag("name", "twitter:title", title);
+  upsertMetaTag("name", "twitter:description", description);
+  upsertMetaTag("name", "twitter:image", ogImage);
+  upsertLinkTag("canonical", canonical);
+  syncAlternateLinks(canonical);
+
+  const allowed = new Set(jsonLd.map((entry) => entry.id));
+  document.head.querySelectorAll<HTMLScriptElement>("script[data-seo]").forEach((node) => {
+    const id = node.getAttribute("data-seo") ?? "";
+    if (!allowed.has(id)) node.remove();
+  });
+  jsonLd.forEach((entry) => upsertJsonLd(entry.id, entry.payload));
+}
+
+function categoryToSlug(value: string): string {
+  return encodeURIComponent(value.trim().toLowerCase().replace(/\s+/g, "-"));
+}
+
+function slugToCategory(value: string): string {
+  return decodeURIComponent(value).replace(/-/g, " ");
+}
+
+function categoryWebpArt(name: string): string {
+  const index = CATEGORY_ART_ORDER.findIndex((item) => item === name);
+  if (index < 0) return DEFAULT_OG_IMAGE;
+  return `/catalog-art/c${String(index + 1).padStart(2, "0")}.webp`;
+}
+
+async function trackEvent(
+  event:
+    | "home_view"
+    | "catalog_view"
+    | "category_open"
+    | "category_filter_apply"
+    | "venue_view"
+    | "lead_submit"
+    | "owner_register"
+    | "owner_login",
+  meta: Record<string, string | number | boolean> = {}
+): Promise<void> {
+  try {
+    await fetch(`${API}/api/analytics/event`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ event, meta })
+    });
+  } catch {
+    // ignore analytics errors
+  }
+}
 
 function formatRub(value: number): string {
   return new Intl.NumberFormat("ru-RU").format(value);
+}
+
+function formatDateValue(value: Date | undefined): string {
+  if (!value) return "";
+  const year = value.getFullYear();
+  const month = `${value.getMonth() + 1}`.padStart(2, "0");
+  const day = `${value.getDate()}`.padStart(2, "0");
+  return `${year}-${month}-${day}`;
 }
 
 function useTheme(): [Theme, () => void] {
@@ -62,31 +311,109 @@ function useTheme(): [Theme, () => void] {
   return [theme, () => setTheme((prev) => (prev === "light" ? "dark" : "light"))];
 }
 
+function DateField({ value, onChange }: { value: Date | undefined; onChange: (date: Date | undefined) => void }) {
+  const [opened, setOpened] = useState(false);
+
+  return (
+    <div className="date-picker-wrap">
+      <button type="button" className="date-trigger" onClick={() => setOpened((prev) => !prev)}>
+        {value ? value.toLocaleDateString("ru-RU") : "Выберите дату"}
+      </button>
+      {opened ? (
+        <div className="date-popover" role="dialog" aria-label="Выбор даты">
+          <DayPicker
+            mode="single"
+            selected={value}
+            onSelect={(date) => {
+              onChange(date);
+              setOpened(false);
+            }}
+          />
+          <button type="button" className="date-clear" onClick={() => onChange(undefined)}>
+            Сбросить дату
+          </button>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function Breadcrumbs({ items }: { items: Array<{ label: string; to?: string }> }) {
+  return (
+    <nav className="breadcrumbs" aria-label="Хлебные крошки">
+      {items.map((item, index) => (
+        <span key={`${item.label}-${index}`}>
+          {item.to && index < items.length - 1 ? <Link to={item.to}>{item.label}</Link> : <strong>{item.label}</strong>}
+          {index < items.length - 1 ? <span className="crumb-sep"> / </span> : null}
+        </span>
+      ))}
+    </nav>
+  );
+}
+
 function Header({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: () => void }) {
+  const location = useLocation();
+  const isOwnerRoute = location.pathname.startsWith("/owner");
+
   return (
     <header className="header glass">
-      <div className="brand">
+      <Link to="/" className="brand brand-link" aria-label="VmestoRu — на главную">
         <span className="brand-dot" />
         <div>
           <strong>VmestoRu</strong>
           <p>Премиальная аренда площадок для мероприятий</p>
         </div>
-      </div>
+      </Link>
 
       <nav className="nav">
-        <Link to="/">Главная</Link>
-        <Link to="/owner">Арендодателю</Link>
+        <NavLink to="/catalog">Каталог</NavLink>
+        <a href="/#how-it-works">Как это работает</a>
+        <a href="mailto:hello@vmestoru.ru">Поддержка</a>
       </nav>
 
       <div className="header-actions">
-        <button type="button" className="theme-toggle" onClick={onToggleTheme}>
-          {theme === "light" ? "Темная тема" : "Светлая тема"}
+        <button
+          type="button"
+          className={theme === "dark" ? "theme-switch is-dark" : "theme-switch"}
+          onClick={onToggleTheme}
+          aria-label="Переключить тему"
+          title="Переключить тему"
+        >
+          <span className="theme-switch-track" aria-hidden="true">
+            <span className="theme-switch-thumb">{theme === "light" ? "☀" : "☾"}</span>
+          </span>
         </button>
-        <Link to="/owner" className="become-owner">
-          Стать арендодателем
+        <Link to={isOwnerRoute ? "/" : "/owner"} className="become-owner">
+          {isOwnerRoute ? "Назад в каталог" : "Для арендодателей"}
         </Link>
       </div>
     </header>
+  );
+}
+
+function HeroOrbit() {
+  return (
+    <div className="hero-orbit-wrap" aria-hidden="true">
+      <svg className="hero-orbit" viewBox="0 0 320 220" role="img" aria-label="Динамическая визуализация">
+        <defs>
+          <linearGradient id="orbGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" className="orb-stop-a" />
+            <stop offset="100%" className="orb-stop-b" />
+          </linearGradient>
+          <linearGradient id="trailGradient" x1="0%" y1="50%" x2="100%" y2="50%">
+            <stop offset="0%" stopColor="transparent" />
+            <stop offset="100%" className="trail-stop" />
+          </linearGradient>
+        </defs>
+        <ellipse cx="160" cy="112" rx="106" ry="50" className="orbit-track" />
+        <path d="M58 112 C102 168, 218 168, 262 112" className="orbit-arc" />
+        <path d="M58 112 C102 56, 218 56, 262 112" className="orbit-arc orbit-arc-soft" />
+        <circle cx="112" cy="76" r="10" className="satellite satellite-a" />
+        <circle cx="214" cy="142" r="8" className="satellite satellite-b" />
+        <rect x="74" y="108" width="172" height="8" rx="4" className="orb-trail" />
+        <circle cx="160" cy="112" r="34" fill="url(#orbGradient)" className="orb-core" />
+      </svg>
+    </div>
   );
 }
 
@@ -100,8 +427,15 @@ function HomePage() {
   const [region, setRegion] = useState("");
   const [category, setCategory] = useState("");
   const [capacity, setCapacity] = useState("");
-  const [date, setDate] = useState("");
+  const [date, setDate] = useState<Date | undefined>(undefined);
   const [sort, setSort] = useState("recommended");
+  const [quickFilters, setQuickFilters] = useState<QuickFilters>({
+    parking: false,
+    stage: false,
+    late: false,
+    instant: false
+  });
+  const [savedSearches, setSavedSearches] = useState<SavedSearch[]>([]);
 
   const [aiQuery, setAiQuery] = useState("");
   const [aiResult, setAiResult] = useState<Venue[]>([]);
@@ -111,7 +445,99 @@ function HomePage() {
 
   useEffect(() => {
     void bootstrap();
+    void trackEvent("home_view", { source: "web" });
+    const raw = localStorage.getItem("vmestoru-saved-searches");
+    if (raw) {
+      try {
+        setSavedSearches(JSON.parse(raw) as SavedSearch[]);
+      } catch {
+        setSavedSearches([]);
+      }
+    }
+
+    applySeo({
+      title: "VmestoRu — аренда площадок для мероприятий",
+      description:
+        "Площадка аренды лофтов, банкетных и конференц-залов по городам России. Умный подбор, рейтинг площадок и быстрая заявка арендодателю.",
+      path: "/",
+      jsonLd: [
+        {
+          id: "org",
+          payload: {
+            "@context": "https://schema.org",
+            "@type": "Organization",
+            name: "VmestoRu",
+            url: SITE_URL,
+            email: "hello@vmestoru.ru",
+          },
+        },
+        {
+          id: "website",
+          payload: {
+            "@context": "https://schema.org",
+            "@type": "WebSite",
+            name: "VmestoRu",
+            url: SITE_URL,
+            potentialAction: {
+              "@type": "SearchAction",
+              target: `${SITE_URL}/?q={search_term_string}`,
+              "query-input": "required name=search_term_string",
+            },
+          },
+        },
+      ],
+    });
   }, []);
+
+  useEffect(() => {
+    if (!categories.length) return;
+    applySeo({
+      title: "VmestoRu — аренда площадок для мероприятий",
+      description:
+        "Каталог площадок с фильтрами по категориям и городам: лофты, банкетные и конференц-залы. Сравнивайте рейтинг и отправляйте заявку в 1 клик.",
+      path: "/",
+      jsonLd: [
+        {
+          id: "org",
+          payload: {
+            "@context": "https://schema.org",
+            "@type": "Organization",
+            name: "VmestoRu",
+            url: SITE_URL,
+            email: "hello@vmestoru.ru",
+          },
+        },
+        {
+          id: "website",
+          payload: {
+            "@context": "https://schema.org",
+            "@type": "WebSite",
+            name: "VmestoRu",
+            url: SITE_URL,
+            potentialAction: {
+              "@type": "SearchAction",
+              target: `${SITE_URL}/?q={search_term_string}`,
+              "query-input": "required name=search_term_string",
+            },
+          },
+        },
+        {
+          id: "home-categories",
+          payload: {
+            "@context": "https://schema.org",
+            "@type": "ItemList",
+            name: "Категории площадок VmestoRu",
+            itemListElement: categories.slice(0, 12).map((item, index) => ({
+              "@type": "ListItem",
+              position: index + 1,
+              name: item.name,
+              url: `${SITE_URL}/category/${categoryToSlug(item.name)}`,
+            })),
+          },
+        },
+      ],
+    });
+  }, [categories]);
 
   async function bootstrap(): Promise<void> {
     const [featuredRes, categoriesRes, venuesRes] = await Promise.all([
@@ -125,16 +551,92 @@ function HomePage() {
     if (venuesRes.ok) setAllVenues((await venuesRes.json()) as Venue[]);
   }
 
-  async function handleSearch(event: FormEvent): Promise<void> {
-    event.preventDefault();
-
+  function buildSearchParams(): URLSearchParams {
     const params = new URLSearchParams();
     if (query) params.set("q", query);
     if (region) params.set("region", region);
     if (category) params.set("category", category);
     if (capacity) params.set("capacity", capacity);
-    if (date) params.set("date", date);
+    if (date) params.set("date", formatDateValue(date));
     params.set("sort", sort);
+
+    if (quickFilters.parking) params.set("parking", "true");
+    if (quickFilters.stage) params.set("stage", "true");
+    if (quickFilters.late) params.set("late", "true");
+    if (quickFilters.instant) params.set("instant", "true");
+    return params;
+  }
+
+  async function handleSearch(event: FormEvent): Promise<void> {
+    event.preventDefault();
+    const params = buildSearchParams();
+
+    const response = await fetch(`${API}/api/venues?${params.toString()}`);
+    if (!response.ok) return;
+    setAllVenues((await response.json()) as Venue[]);
+  }
+
+  function toggleQuickFilter(key: keyof QuickFilters): void {
+    setQuickFilters((prev) => ({ ...prev, [key]: !prev[key] }));
+  }
+
+  async function resetHomeFilters(): Promise<void> {
+    setQuery("");
+    setRegion("");
+    setCategory("");
+    setCapacity("");
+    setDate(undefined);
+    setSort("recommended");
+    setQuickFilters({ parking: false, stage: false, late: false, instant: false });
+    const response = await fetch(`${API}/api/venues`);
+    if (!response.ok) return;
+    setAllVenues((await response.json()) as Venue[]);
+  }
+
+  function adjustCapacity(delta: number): void {
+    const numeric = Number.parseInt(capacity || "0", 10);
+    const safeCurrent = Number.isFinite(numeric) ? numeric : 0;
+    const next = Math.max(1, safeCurrent + delta);
+    setCapacity(String(next));
+  }
+
+  function saveCurrentSearch(): void {
+    const next: SavedSearch = {
+      id: `${Date.now()}`,
+      label: [category || "Все категории", region || "Все регионы", capacity ? `${capacity} гостей` : ""].filter(Boolean).join(" · "),
+      query,
+      region,
+      category,
+      capacity,
+      date: date ? formatDateValue(date) : "",
+      sort,
+      quickFilters
+    };
+    const updated = [next, ...savedSearches].slice(0, 5);
+    setSavedSearches(updated);
+    localStorage.setItem("vmestoru-saved-searches", JSON.stringify(updated));
+  }
+
+  async function applySavedSearch(item: SavedSearch): Promise<void> {
+    setQuery(item.query);
+    setRegion(item.region);
+    setCategory(item.category);
+    setCapacity(item.capacity);
+    setDate(item.date ? new Date(item.date) : undefined);
+    setSort(item.sort);
+    setQuickFilters(item.quickFilters);
+
+    const params = new URLSearchParams();
+    if (item.query) params.set("q", item.query);
+    if (item.region) params.set("region", item.region);
+    if (item.category) params.set("category", item.category);
+    if (item.capacity) params.set("capacity", item.capacity);
+    if (item.date) params.set("date", item.date);
+    params.set("sort", item.sort);
+    if (item.quickFilters.parking) params.set("parking", "true");
+    if (item.quickFilters.stage) params.set("stage", "true");
+    if (item.quickFilters.late) params.set("late", "true");
+    if (item.quickFilters.instant) params.set("instant", "true");
 
     const response = await fetch(`${API}/api/venues?${params.toString()}`);
     if (!response.ok) return;
@@ -163,53 +665,125 @@ function HomePage() {
 
   return (
     <>
-      <section className="hero glass">
-        <p className="eyebrow">Премиальный сервис под любые мероприятия</p>
-        <h1>
-          Найдите <span className="grad">идеальную площадку</span> за пару минут
-        </h1>
-        <p>
-          На главной доступны 8 самых популярных категорий. В каждой категории — 10-15 лучших вариантов.
-        </p>
+      <section className="hero hero-revolution glass reveal-on-scroll">
+        <div className="hero-aura" aria-hidden="true" />
+        <div className="hero-grid">
+          <div>
+            <p className="eyebrow">Премиальный сервис под любые мероприятия</p>
+            <h1>
+              Соберите <span className="grad">идеальную площадку</span> как в конструкторе
+            </h1>
+            <p className="hero-subtitle">
+              Фильтры, AI-подбор и мгновенный переход к карточке. Меньше кликов, больше релевантных вариантов.
+            </p>
+            <div className="hero-metrics">
+              <article>
+                <strong>{allVenues.length}</strong>
+                <span>площадок в каталоге</span>
+              </article>
+              <article>
+                <strong>{regions.length}</strong>
+                <span>регионов</span>
+              </article>
+              <article>
+                <strong>{categories.length}</strong>
+                <span>категорий</span>
+              </article>
+            </div>
+          </div>
+          <div className="hero-side-stack">
+            <HeroOrbit />
+            <aside className="hero-assistant">
+              <p className="hero-assistant-title">AI-консьерж подбора</p>
+              <p>Опиши задачу простым языком, и мы сразу покажем подходящие площадки.</p>
+              <form className="ai-search hero-ai" onSubmit={handleAiSearch}>
+                <input
+                  value={aiQuery}
+                  onChange={(e) => setAiQuery(e.target.value)}
+                  placeholder="Нужен светлый зал в Москве на 80 гостей, до 120000"
+                />
+                <button type="submit">AI-подбор</button>
+              </form>
+              {aiMessage ? <p className="ai-note">{aiMessage}</p> : null}
+            </aside>
+          </div>
+        </div>
 
         <form className="search-grid" onSubmit={handleSearch}>
-          <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Лофт, конференция, свадьба..." />
-          <select value={region} onChange={(e) => setRegion(e.target.value)}>
-            <option value="">Все регионы</option>
-            {regions.map((item) => (
-              <option key={item} value={item}>{item}</option>
-            ))}
-          </select>
-          <select value={category} onChange={(e) => setCategory(e.target.value)}>
-            <option value="">Все категории</option>
-            {categories.map((item) => (
-              <option key={item.id} value={item.name}>{item.name}</option>
-            ))}
-          </select>
-          <input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
-          <input type="number" min="1" placeholder="Гостей" value={capacity} onChange={(e) => setCapacity(e.target.value)} />
-          <select value={sort} onChange={(e) => setSort(e.target.value)}>
-            <option value="recommended">Рекомендованные</option>
-            <option value="price_asc">Цена ниже</option>
-            <option value="price_desc">Цена выше</option>
-            <option value="rating_desc">Рейтинг</option>
-          </select>
-          <button type="submit" className="primary">Найти</button>
+          <label className="filter-item">
+            <span>Запрос</span>
+            <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Лофт, конференция, свадьба..." />
+          </label>
+          <label className="filter-item">
+            <span>Регион</span>
+            <select value={region} onChange={(e) => setRegion(e.target.value)}>
+              <option value="">Все регионы</option>
+              {regions.map((item) => (
+                <option key={item} value={item}>{item}</option>
+              ))}
+            </select>
+          </label>
+          <label className="filter-item">
+            <span>Категория</span>
+            <select value={category} onChange={(e) => setCategory(e.target.value)}>
+              <option value="">Все категории</option>
+              {categories.map((item) => (
+                <option key={item.id} value={item.name}>{item.name}</option>
+              ))}
+            </select>
+          </label>
+          <label className="filter-item">
+            <span>Дата</span>
+            <DateField value={date} onChange={setDate} />
+          </label>
+          <label className="filter-item">
+            <span>Гостей</span>
+            <div className="number-stepper">
+              <button type="button" className="step-btn" aria-label="Уменьшить гостей" onClick={() => adjustCapacity(-1)}>
+                −
+              </button>
+              <input type="number" min="1" placeholder="Например, 80" value={capacity} onChange={(e) => setCapacity(e.target.value)} />
+              <button type="button" className="step-btn" aria-label="Увеличить гостей" onClick={() => adjustCapacity(1)}>
+                +
+              </button>
+            </div>
+          </label>
+          <label className="filter-item">
+            <span>Сортировка</span>
+            <select value={sort} onChange={(e) => setSort(e.target.value)}>
+              <option value="recommended">Рекомендованные</option>
+              <option value="price_asc">Цена ниже</option>
+              <option value="price_desc">Цена выше</option>
+              <option value="rating_desc">Рейтинг</option>
+            </select>
+          </label>
+          <button type="submit" className="primary search-submit">Найти</button>
+          <button type="button" className="ghost-btn search-submit" onClick={() => void resetHomeFilters()}>Сбросить</button>
         </form>
+        <div className="quick-filters">
+          <button type="button" className={quickFilters.parking ? "chip active" : "chip"} onClick={() => toggleQuickFilter("parking")}>С парковкой</button>
+          <button type="button" className={quickFilters.stage ? "chip active" : "chip"} onClick={() => toggleQuickFilter("stage")}>Со сценой</button>
+          <button type="button" className={quickFilters.late ? "chip active" : "chip"} onClick={() => toggleQuickFilter("late")}>Можно поздно</button>
+          <button type="button" className={quickFilters.instant ? "chip active" : "chip"} onClick={() => toggleQuickFilter("instant")}>Instant booking</button>
+          <button type="button" className="chip save-chip" onClick={saveCurrentSearch}>Сохранить поиск</button>
+        </div>
 
-        <form className="ai-search" onSubmit={handleAiSearch}>
-          <input
-            value={aiQuery}
-            onChange={(e) => setAiQuery(e.target.value)}
-            placeholder="AI-поиск: нужен лофт в Москве на 60 гостей до 120000"
-          />
-          <button type="submit">AI-подбор</button>
-        </form>
-        {aiMessage ? <p className="ai-note">{aiMessage}</p> : null}
+        {savedSearches.length > 0 ? (
+          <div className="saved-searches">
+            <p>Сохраненные поиски:</p>
+            <div>
+              {savedSearches.map((item) => (
+                <button key={item.id} type="button" className="saved-pill" onClick={() => void applySavedSearch(item)}>
+                  {item.label || "Сохраненный фильтр"}
+                </button>
+              ))}
+            </div>
+          </div>
+        ) : null}
       </section>
 
       {aiResult.length > 0 ? (
-        <section className="section glass">
+        <section className="section glass reveal-on-scroll">
           <h2>AI-подбор</h2>
           <div className="cards-grid">
             {aiResult.map((venue) => (
@@ -217,8 +791,9 @@ function HomePage() {
                 <img src={venue.images[0]} alt={venue.title} loading="lazy" />
                 <div className="card-body">
                   <h3>{venue.title}</h3>
-                  <p>{venue.category} · {venue.region}</p>
+                  <p><span className="category-pill">{venue.category}</span> · {venue.region}</p>
                   <p>от {formatRub(venue.pricePerHour)} ₽/час</p>
+                  <span className="rating-corner">★ {venue.rating}</span>
                 </div>
               </article>
             ))}
@@ -226,47 +801,424 @@ function HomePage() {
         </section>
       ) : null}
 
-      <section className="section glass">
+      <section id="catalog" className="section glass reveal-on-scroll">
         <h2>Каталог площадок</h2>
         <div className="cards-grid">
           {allVenues.slice(0, 24).map((venue) => (
-            <article key={venue.id} className="venue-card" onClick={() => navigate(`/venue/${venue.id}`)}>
-              <img src={venue.images[0]} alt={venue.title} loading="lazy" />
-              <div className="card-body">
-                <div className="row-between">
-                  <h3>{venue.title}</h3>
-                  {venue.instantBooking ? <span className="instant">Instant</span> : null}
+              <article key={venue.id} className="venue-card" onClick={() => navigate(`/venue/${venue.id}`)}>
+                <img src={venue.images[0]} alt={venue.title} loading="lazy" />
+                <div className="card-body">
+                  <div className="row-between">
+                    <h3>{venue.title}</h3>
+                    {venue.instantBooking ? <span className="instant">Instant</span> : null}
+                  </div>
+                  <p><span className="category-pill">{venue.category}</span> · {venue.region}</p>
+                  <p>{venue.capacity} гостей · {venue.metroMinutes} мин</p>
+                  <p className="price">от {formatRub(venue.pricePerHour)} ₽/час</p>
+                  <span className="rating-corner">★ {venue.rating}</span>
                 </div>
-                <p>{venue.category} · {venue.region}</p>
-                <p>{venue.capacity} гостей · {venue.metroMinutes} мин</p>
-                <p className="price">от {formatRub(venue.pricePerHour)} ₽/час</p>
-              </div>
-            </article>
-          ))}
+              </article>
+            ))}
         </div>
+        {allVenues.length === 0 ? (
+          <div className="empty-state">
+            <h3>Площадок по текущему фильтру нет</h3>
+            <p>Сбросьте фильтр или попробуйте другой регион и категорию.</p>
+            <div className="empty-actions">
+              <button type="button" className="primary" onClick={() => void resetHomeFilters()}>Сбросить фильтры</button>
+              <Link to="/catalog" className="become-owner">Перейти в категории</Link>
+            </div>
+          </div>
+        ) : null}
       </section>
 
       {featured.map((group) => (
-        <section key={group.id} className="section glass">
+        <section key={group.id} className="section glass reveal-on-scroll">
           <div className="row-between">
-            <h2>{group.name}</h2>
+            <h2><Link className="category-head-link" to={`/category/${categoryToSlug(group.name)}`}>{group.name}</Link></h2>
             <span>{group.venues.length} вариантов</span>
           </div>
           <div className="cards-grid">
-            {group.venues.slice(0, 12).map((venue) => (
+            {group.venues.slice(0, 8).map((venue) => (
               <article key={venue.id} className="venue-card" onClick={() => navigate(`/venue/${venue.id}`)}>
                 <img src={venue.images[0]} alt={venue.title} loading="lazy" />
                 <div className="card-body">
                   <h3>{venue.title}</h3>
-                  <p>{venue.region} · рейтинг {venue.rating}</p>
+                  <p><span className="category-pill">{venue.category}</span> · {venue.region}</p>
                   <p className="price">от {formatRub(venue.pricePerHour)} ₽/час</p>
+                  <span className="rating-corner">★ {venue.rating}</span>
                 </div>
               </article>
             ))}
           </div>
         </section>
       ))}
+
+      <section id="how-it-works" className="section glass reveal-on-scroll">
+        <h2>Как это работает</h2>
+        <div className="hero-metrics">
+          <article>
+            <strong>01</strong>
+            <span>Фильтруете площадки под формат мероприятия</span>
+          </article>
+          <article>
+            <strong>02</strong>
+            <span>Сравниваете карточки и рейтинг в одном экране</span>
+          </article>
+          <article>
+            <strong>03</strong>
+            <span>Оставляете заявку и связываетесь с арендодателем</span>
+          </article>
+        </div>
+      </section>
+
+      <section className="section glass reveal-on-scroll">
+        <h2>Категории и города</h2>
+        <div className="seo-links">
+          {categories.slice(0, 14).map((item) => (
+            <Link key={item.id} to={`/category/${categoryToSlug(item.name)}`} className="seo-link-pill">
+              {item.name}
+            </Link>
+          ))}
+        </div>
+        <div className="seo-links muted-links">
+          {regions.map((item) => (
+            <span key={item} className="seo-link-pill muted-city">{item}</span>
+          ))}
+        </div>
+      </section>
     </>
+  );
+}
+
+function CatalogPage() {
+  const [categories, setCategories] = useState<Category[]>([]);
+  const [venues, setVenues] = useState<Venue[]>([]);
+  const [query, setQuery] = useState("");
+  const [region, setRegion] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    void bootstrap();
+    void trackEvent("catalog_view", { source: "web" });
+    applySeo({
+      title: "Каталог категорий площадок — VmestoRu",
+      description: "Выберите категорию площадки с фильтром по названию и региону. Переходите в категорию и смотрите все доступные площадки.",
+      path: "/catalog",
+      jsonLd: [
+        {
+          id: "catalog-page",
+          payload: {
+            "@context": "https://schema.org",
+            "@type": "CollectionPage",
+            name: "Каталог категорий площадок",
+            url: `${SITE_URL}/catalog`,
+          },
+        },
+        {
+          id: "catalog-breadcrumbs",
+          payload: {
+            "@context": "https://schema.org",
+            "@type": "BreadcrumbList",
+            itemListElement: [
+              { "@type": "ListItem", position: 1, name: "Главная", item: `${SITE_URL}/` },
+              { "@type": "ListItem", position: 2, name: "Каталог", item: `${SITE_URL}/catalog` },
+            ],
+          },
+        },
+      ],
+    });
+  }, []);
+
+  async function bootstrap(): Promise<void> {
+    setLoading(true);
+    setError("");
+    try {
+      const [categoriesRes, venuesRes] = await Promise.all([fetch(`${API}/api/categories`), fetch(`${API}/api/venues`)]);
+      if (!categoriesRes.ok || !venuesRes.ok) {
+        setError("Не удалось загрузить каталог. Обновите страницу.");
+        setCategories([]);
+        setVenues([]);
+      } else {
+        setCategories((await categoriesRes.json()) as Category[]);
+        setVenues((await venuesRes.json()) as Venue[]);
+      }
+    } catch {
+      setError("Ошибка сети при загрузке каталога.");
+      setCategories([]);
+      setVenues([]);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  const regions = useMemo(() => [...new Set(venues.map((item) => item.region))], [venues]);
+
+  function resetCatalogFilters(): void {
+    setQuery("");
+    setRegion("");
+  }
+
+  const categoryCards = useMemo(() => {
+    return categories
+      .filter((item) => (query ? item.name.toLowerCase().includes(query.toLowerCase()) : true))
+      .map((item) => {
+        const inCategory = venues.filter((venue) => venue.category === item.name);
+        const inRegion = region ? inCategory.filter((venue) => venue.region === region) : inCategory;
+        return {
+          id: item.id,
+          name: item.name,
+          image: categoryWebpArt(item.name),
+          count: inRegion.length,
+        };
+      })
+      .filter((item) => item.count > 0);
+  }, [categories, venues, query, region]);
+
+  return (
+    <section className="section glass reveal-on-scroll">
+      <Breadcrumbs items={[{ label: "Главная", to: "/" }, { label: "Каталог" }]} />
+      <h1>Каталог категорий</h1>
+      <form className="catalog-filters" onSubmit={(e) => e.preventDefault()}>
+        <label className="filter-item">
+          <span>Поиск категории</span>
+          <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Лофт, ресторан, студия..." />
+        </label>
+        <label className="filter-item">
+          <span>Регион</span>
+          <select value={region} onChange={(e) => setRegion(e.target.value)}>
+            <option value="">Все регионы</option>
+            {regions.map((item) => (
+              <option key={item} value={item}>{item}</option>
+            ))}
+          </select>
+        </label>
+        <button type="button" className="ghost-btn catalog-reset" onClick={resetCatalogFilters}>Сбросить фильтр</button>
+      </form>
+
+      <div className="category-grid">
+        {categoryCards.map((item) => (
+          <Link
+            key={item.id}
+            className="category-tile"
+            to={`/category/${categoryToSlug(item.name)}${region ? `?region=${encodeURIComponent(region)}` : ""}`}
+            onClick={() => void trackEvent("category_open", { category: item.name, region: region || "all", from: "catalog" })}
+          >
+            <img src={item.image} alt={item.name} loading="lazy" />
+            <div className="category-tile-body">
+              <h3>{item.name}</h3>
+              <p>{item.count} площадок</p>
+            </div>
+          </Link>
+        ))}
+      </div>
+      {loading ? <p className="muted">Загрузка категорий...</p> : null}
+      {!loading && error ? <p className="error-note">{error}</p> : null}
+      {!loading && !error && categoryCards.length === 0 ? (
+        <div className="empty-state">
+          <h3>Категории не найдены</h3>
+          <p>Измените фильтр по названию или региону, чтобы увидеть доступные разделы.</p>
+          <div className="empty-actions">
+            <button type="button" className="primary" onClick={resetCatalogFilters}>Очистить фильтр</button>
+            <Link to="/" className="become-owner">На главную</Link>
+          </div>
+        </div>
+      ) : null}
+    </section>
+  );
+}
+
+function CategoryPage() {
+  const { slug } = useParams();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [categoryName, setCategoryName] = useState("");
+  const [venuesByCategory, setVenuesByCategory] = useState<Venue[]>([]);
+  const [categoryUniverse, setCategoryUniverse] = useState<Venue[]>([]);
+
+  const [query, setQuery] = useState(searchParams.get("q") ?? "");
+  const [region, setRegion] = useState(searchParams.get("region") ?? "");
+  const [capacity, setCapacity] = useState(searchParams.get("capacity") ?? "");
+  const [sort, setSort] = useState(searchParams.get("sort") || "recommended");
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    setQuery(searchParams.get("q") ?? "");
+    setRegion(searchParams.get("region") ?? "");
+    setCapacity(searchParams.get("capacity") ?? "");
+    setSort(searchParams.get("sort") || "recommended");
+    void loadCategory();
+  }, [slug, searchParams]);
+
+  useEffect(() => {
+    if (!slug || !categoryName) return;
+    void trackEvent("category_open", { category: categoryName, source: "direct" });
+    applySeo({
+      title: `${categoryName} — аренда площадок | VmestoRu`,
+      description: `Подбор площадок категории «${categoryName}»: сравнивайте рейтинг, цену и доступность в городах России.`,
+      path: `/category/${slug}`,
+      jsonLd: [
+        {
+          id: "category-page",
+          payload: {
+            "@context": "https://schema.org",
+            "@type": "CollectionPage",
+            name: `${categoryName} — каталог площадок`,
+            url: `${SITE_URL}/category/${slug}`,
+          },
+        },
+        {
+          id: "category-breadcrumbs",
+          payload: {
+            "@context": "https://schema.org",
+            "@type": "BreadcrumbList",
+            itemListElement: [
+              { "@type": "ListItem", position: 1, name: "Главная", item: `${SITE_URL}/` },
+              { "@type": "ListItem", position: 2, name: "Каталог", item: `${SITE_URL}/catalog` },
+              { "@type": "ListItem", position: 3, name: categoryName, item: `${SITE_URL}/category/${slug}` },
+            ],
+          },
+        },
+      ],
+    });
+  }, [categoryName, slug]);
+
+  async function loadCategory(): Promise<void> {
+    if (!slug) return;
+    setLoading(true);
+    setError("");
+    try {
+      const categoriesRes = await fetch(`${API}/api/categories`);
+      const categoriesPayload = categoriesRes.ok ? ((await categoriesRes.json()) as Category[]) : [];
+      const matched = categoriesPayload.find((item) => categoryToSlug(item.name) === slug);
+      const resolvedName = matched?.name ?? slugToCategory(slug);
+      setCategoryName(resolvedName);
+
+      const universeRes = await fetch(`${API}/api/venues?category=${encodeURIComponent(resolvedName)}`);
+      if (universeRes.ok) {
+        setCategoryUniverse((await universeRes.json()) as Venue[]);
+      } else {
+        setCategoryUniverse([]);
+      }
+
+      const params = new URLSearchParams();
+      params.set("category", resolvedName);
+      if (query) params.set("q", query);
+      if (region) params.set("region", region);
+      if (capacity) params.set("capacity", capacity);
+      if (sort) params.set("sort", sort);
+
+      const venuesRes = await fetch(`${API}/api/venues?${params.toString()}`);
+      if (!venuesRes.ok) {
+        setError("Не удалось загрузить площадки категории.");
+        setVenuesByCategory([]);
+      } else {
+        setVenuesByCategory((await venuesRes.json()) as Venue[]);
+      }
+    } catch {
+      setError("Ошибка сети при загрузке категории.");
+      setVenuesByCategory([]);
+      setCategoryUniverse([]);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  function applyFilters(event: FormEvent): void {
+    event.preventDefault();
+    const params = new URLSearchParams();
+    if (query) params.set("q", query);
+    if (region) params.set("region", region);
+    if (capacity) params.set("capacity", capacity);
+    if (sort) params.set("sort", sort);
+    void trackEvent("category_filter_apply", {
+      category: categoryName || slug || "",
+      region: region || "all",
+      hasQuery: Boolean(query),
+      hasCapacity: Boolean(capacity),
+      sort,
+    });
+    setSearchParams(params);
+  }
+
+  function resetFilters(): void {
+    setQuery("");
+    setRegion("");
+    setCapacity("");
+    setSort("recommended");
+    setSearchParams(new URLSearchParams({ sort: "recommended" }));
+  }
+
+  const regions = useMemo(() => [...new Set(categoryUniverse.map((item) => item.region))], [categoryUniverse]);
+
+  return (
+    <section className="section glass reveal-on-scroll">
+      <Breadcrumbs items={[{ label: "Главная", to: "/" }, { label: "Каталог", to: "/catalog" }, { label: categoryName || "Категория" }]} />
+      <Link to="/catalog" className="back-link">← Назад в категории</Link>
+      <h1>
+        Категория: <span className="grad">{categoryName || "..."}</span>
+      </h1>
+      <form className="search-grid" onSubmit={applyFilters}>
+        <label className="filter-item">
+          <span>Поиск по площадкам</span>
+          <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Название или описание" />
+        </label>
+        <label className="filter-item">
+          <span>Регион</span>
+          <select value={region} onChange={(e) => setRegion(e.target.value)}>
+            <option value="">Все регионы</option>
+            {regions.map((item) => (
+              <option key={item} value={item}>{item}</option>
+            ))}
+          </select>
+        </label>
+        <label className="filter-item">
+          <span>Гостей</span>
+          <input type="number" min="1" placeholder="Например, 50" value={capacity} onChange={(e) => setCapacity(e.target.value)} />
+        </label>
+        <label className="filter-item">
+          <span>Сортировка</span>
+          <select value={sort} onChange={(e) => setSort(e.target.value)}>
+            <option value="recommended">Рекомендованные</option>
+            <option value="price_asc">Цена ниже</option>
+            <option value="price_desc">Цена выше</option>
+            <option value="rating_desc">Рейтинг</option>
+          </select>
+        </label>
+        <button type="submit" className="primary search-submit">Применить</button>
+        <button type="button" className="ghost-btn search-submit" onClick={resetFilters}>Сбросить</button>
+      </form>
+      <p className="muted">Найдено площадок: {venuesByCategory.length}</p>
+      {loading ? <p className="muted">Загрузка площадок...</p> : null}
+      {!loading && error ? <p className="error-note">{error}</p> : null}
+      {!loading && !error && venuesByCategory.length === 0 ? (
+        <div className="empty-state">
+          <h3>Площадок в категории не найдено</h3>
+          <p>Скорректируйте фильтры или вернитесь к выбору категории.</p>
+          <div className="empty-actions">
+            <button type="button" className="primary" onClick={resetFilters}>Сбросить фильтры</button>
+            <Link to="/catalog" className="become-owner">Выбрать другую категорию</Link>
+          </div>
+        </div>
+      ) : null}
+      <div className="cards-grid">
+        {venuesByCategory.slice(0, 48).map((venue) => (
+          <article key={venue.id} className="venue-card">
+            <Link to={`/venue/${venue.id}`} className="venue-link-card">
+              <img src={venue.images[0]} alt={venue.title} loading="lazy" />
+              <div className="card-body">
+                <h3>{venue.title}</h3>
+                <p><span className="category-pill">{venue.category}</span> · {venue.region}</p>
+                <p>{venue.capacity} гостей · {venue.metroMinutes} мин</p>
+                <p className="price">от {formatRub(venue.pricePerHour)} ₽/час</p>
+                <span className="rating-corner">★ {venue.rating}</span>
+              </div>
+            </Link>
+          </article>
+        ))}
+      </div>
+    </section>
   );
 }
 
@@ -274,6 +1226,9 @@ function VenuePage() {
   const { id } = useParams();
   const [venue, setVenue] = useState<Venue | null>(null);
   const [reviews, setReviews] = useState<Review[]>([]);
+  const [similarVenues, setSimilarVenues] = useState<Venue[]>([]);
+  const [activeImage, setActiveImage] = useState("");
+  const [venueLoading, setVenueLoading] = useState(true);
   const [lead, setLead] = useState({ name: "", phone: "", comment: "" });
   const [leadMessage, setLeadMessage] = useState("");
 
@@ -281,16 +1236,79 @@ function VenuePage() {
     void load();
   }, [id]);
 
+  useEffect(() => {
+    if (!venue || !id) return;
+    applySeo({
+      title: `${venue.title} — аренда площадки | VmestoRu`,
+      description: `${venue.category} в ${venue.region}. Рейтинг ${venue.rating}, вместимость до ${venue.capacity} гостей, от ${formatRub(venue.pricePerHour)} ₽/час.`,
+      path: `/venue/${id}`,
+      type: "article",
+      image: venue.images[0],
+      jsonLd: [
+        {
+          id: "venue-page",
+          payload: {
+            "@context": "https://schema.org",
+            "@type": "Place",
+            name: venue.title,
+            description: venue.description,
+            image: venue.images[0],
+            address: {
+              "@type": "PostalAddress",
+              addressLocality: venue.city,
+              addressRegion: venue.region,
+              streetAddress: venue.address,
+              addressCountry: "RU",
+            },
+            aggregateRating: {
+              "@type": "AggregateRating",
+              ratingValue: venue.rating,
+              reviewCount: venue.reviewsCount,
+            },
+            offers: {
+              "@type": "Offer",
+              priceCurrency: "RUB",
+              price: venue.pricePerHour,
+              availability: "https://schema.org/InStock",
+              url: `${SITE_URL}/venue/${id}`,
+            },
+          },
+        },
+        {
+          id: "venue-breadcrumbs",
+          payload: {
+            "@context": "https://schema.org",
+            "@type": "BreadcrumbList",
+            itemListElement: [
+              { "@type": "ListItem", position: 1, name: "Главная", item: `${SITE_URL}/` },
+              { "@type": "ListItem", position: 2, name: "Каталог", item: `${SITE_URL}/catalog` },
+              { "@type": "ListItem", position: 3, name: venue.category, item: `${SITE_URL}/category/${categoryToSlug(venue.category)}` },
+              { "@type": "ListItem", position: 4, name: venue.title, item: `${SITE_URL}/venue/${id}` },
+            ],
+          },
+        },
+      ],
+    });
+  }, [venue, id]);
+
   async function load(): Promise<void> {
     if (!id) return;
+    setVenueLoading(true);
 
     const [venueRes, reviewRes] = await Promise.all([
       fetch(`${API}/api/venues/${id}`),
       fetch(`${API}/api/venues/${id}/reviews`),
     ]);
 
-    if (venueRes.ok) setVenue((await venueRes.json()) as Venue);
+    if (venueRes.ok) {
+      const loadedVenue = (await venueRes.json()) as Venue;
+      setVenue(loadedVenue);
+      setActiveImage(loadedVenue.images[0] ?? "");
+    }
     if (reviewRes.ok) setReviews((await reviewRes.json()) as Review[]);
+    const similarRes = await fetch(`${API}/api/venues/${id}/similar`);
+    if (similarRes.ok) setSimilarVenues((await similarRes.json()) as Venue[]);
+    setVenueLoading(false);
   }
 
   async function sendLead(event: FormEvent): Promise<void> {
@@ -309,18 +1327,56 @@ function VenuePage() {
       return;
     }
 
+    void trackEvent("lead_submit", { venueId: id });
     setLeadMessage(payload.message);
     setLead({ name: "", phone: "", comment: "" });
   }
 
-  if (!venue) {
-    return <section className="section glass"><p>Загрузка...</p></section>;
+  if (venueLoading || !venue) {
+    return (
+      <section className="section glass">
+        <div className="skeleton-block" />
+        <div className="skeleton-line" />
+        <div className="skeleton-line short" />
+      </section>
+    );
   }
 
   return (
-    <section className="section glass venue-page">
+    <section className="section glass venue-page reveal-on-scroll">
+      <Breadcrumbs items={[{ label: "Главная", to: "/" }, { label: "Каталог", to: "/catalog" }, { label: venue.category, to: `/category/${categoryToSlug(venue.category)}` }, { label: venue.title }]} />
       <Link to="/" className="back-link">← Назад к поиску</Link>
-      <img className="venue-hero" src={venue.images[0]} alt={venue.title} />
+      <img
+        className="venue-hero"
+        src={activeImage || venue.images[0]}
+        alt={venue.title}
+        onError={(e) => {
+          if (e.currentTarget.src !== DEFAULT_OG_IMAGE) e.currentTarget.src = DEFAULT_OG_IMAGE;
+        }}
+      />
+      {venue.images.length > 0 ? (
+        <div className="venue-thumbs" aria-label="Фотографии площадки">
+          {venue.images.map((image, index) => (
+            <button
+              key={`${image}-${index}`}
+              type="button"
+              className={image === (activeImage || venue.images[0]) ? "venue-thumb active" : "venue-thumb"}
+              onClick={() => setActiveImage(image)}
+              aria-label={`Показать фото ${index + 1}`}
+            >
+              <img
+                src={image}
+                alt={`${venue.title} фото ${index + 1}`}
+                loading="lazy"
+                onError={(e) => {
+                  if (e.currentTarget.src !== DEFAULT_OG_IMAGE) e.currentTarget.src = DEFAULT_OG_IMAGE;
+                }}
+              />
+            </button>
+          ))}
+        </div>
+      ) : null}
+      <p className="muted">Фото: {venue.images.length}</p>
       <div className="row-between">
         <h1>{venue.title}</h1>
         <p className="price">от {formatRub(venue.pricePerHour)} ₽/час</p>
@@ -356,13 +1412,39 @@ function VenuePage() {
 
       <section className="reviews-block">
         <h3>Отзывы</h3>
+        <p className="muted">Публикуются только подтвержденные отзывы после модерации.</p>
+        {reviews.length === 0 ? <p className="muted">Пока нет опубликованных отзывов. Новые отзывы появляются после проверки.</p> : null}
         {reviews.map((review) => (
           <article key={review.id}>
-            <p><strong>{review.author}</strong> · ★ {review.rating}</p>
+            <p>
+              <strong>{review.author}</strong> · ★ {review.rating}{" "}
+              {review.verified ? <span className="review-badge">Подтвержденный отзыв</span> : null}
+            </p>
             <p>{review.text}</p>
           </article>
         ))}
       </section>
+
+      {similarVenues.length > 0 ? (
+        <section className="section similar-block reveal-on-scroll">
+          <h3>Похожие площадки</h3>
+          <div className="cards-grid">
+            {similarVenues.map((item) => (
+              <article key={item.id} className="venue-card">
+                <Link to={`/venue/${item.id}`} className="venue-link-card">
+                  <img src={item.images[0]} alt={item.title} />
+                  <div className="card-body">
+                    <h3>{item.title}</h3>
+                    <p><span className="category-pill">{item.category}</span> · {item.region}</p>
+                    <p className="price">от {formatRub(item.pricePerHour)} ₽/час</p>
+                    <span className="rating-corner">★ {item.rating}</span>
+                  </div>
+                </Link>
+              </article>
+            ))}
+          </div>
+        </section>
+      ) : null}
     </section>
   );
 }
@@ -373,6 +1455,31 @@ function OwnerPage() {
   const [authForm, setAuthForm] = useState({ name: "", email: "", password: "" });
   const [message, setMessage] = useState("");
   const [ownerVenues, setOwnerVenues] = useState<Venue[]>([]);
+  const [ownerDashboard, setOwnerDashboard] = useState<OwnerDashboard | null>(null);
+  const [ownerRequests, setOwnerRequests] = useState<OwnerLead[]>([]);
+  const [requestStatusFilter, setRequestStatusFilter] = useState("");
+  const [requestSlaFilter, setRequestSlaFilter] = useState("");
+  const [requestQuery, setRequestQuery] = useState("");
+
+  useEffect(() => {
+    applySeo({
+      title: "Кабинет арендодателя — VmestoRu",
+      description: "Управление площадками, заявками и статусом подписки для арендодателей VmestoRu.",
+      path: "/owner",
+      noindex: true,
+      jsonLd: [
+        {
+          id: "owner-page",
+          payload: {
+            "@context": "https://schema.org",
+            "@type": "WebPage",
+            name: "Кабинет арендодателя",
+            url: `${SITE_URL}/owner`,
+          },
+        },
+      ],
+    });
+  }, []);
 
   const [venueForm, setVenueForm] = useState({
     title: "",
@@ -384,7 +1491,8 @@ function OwnerPage() {
     pricePerHour: "5000",
     description: "",
     amenities: "Wi-Fi, Проектор, Звук",
-    images: "https://images.unsplash.com/photo-1519167758481-83f550bb49b3?auto=format&fit=crop&w=1400&q=80"
+    images:
+      "https://images.unsplash.com/photo-1519167758481-83f550bb49b3?auto=format&fit=crop&w=1400&q=80, https://images.unsplash.com/photo-1497366754035-f200968a6e72?auto=format&fit=crop&w=1400&q=80, https://images.unsplash.com/photo-1505373877841-8d25f7d46678?auto=format&fit=crop&w=1400&q=80"
   });
 
   async function auth(event: FormEvent): Promise<void> {
@@ -411,12 +1519,30 @@ function OwnerPage() {
     setOwner(json.owner as Owner);
     setMessage("Успешный вход");
     await loadOwnerVenues((json.owner as Owner).id);
+    await loadOwnerDashboard((json.owner as Owner).id);
+    await loadOwnerRequests((json.owner as Owner).id, "", "", "");
   }
 
   async function loadOwnerVenues(ownerId: string): Promise<void> {
     const response = await fetch(`${API}/api/owner/venues?ownerId=${encodeURIComponent(ownerId)}`);
     if (!response.ok) return;
     setOwnerVenues((await response.json()) as Venue[]);
+  }
+
+  async function loadOwnerDashboard(ownerId: string): Promise<void> {
+    const response = await fetch(`${API}/api/owner/dashboard?ownerId=${encodeURIComponent(ownerId)}`);
+    if (!response.ok) return;
+    setOwnerDashboard((await response.json()) as OwnerDashboard);
+  }
+
+  async function loadOwnerRequests(ownerId: string, status: string, sla: string, q: string): Promise<void> {
+    const params = new URLSearchParams({ ownerId });
+    if (status) params.set("status", status);
+    if (sla) params.set("sla", sla);
+    if (q) params.set("q", q);
+    const response = await fetch(`${API}/api/owner/requests?${params.toString()}`);
+    if (!response.ok) return;
+    setOwnerRequests((await response.json()) as OwnerLead[]);
   }
 
   async function activateSubscription(): Promise<void> {
@@ -436,11 +1562,17 @@ function OwnerPage() {
 
     setOwner({ ...owner, subscriptionStatus: "active", nextBillingDate: json.nextBillingDate as string });
     setMessage(`Оплата 2000 ₽ принята. Подписка активна до ${json.nextBillingDate}`);
+    await loadOwnerDashboard(owner.id);
   }
 
   async function addVenue(event: FormEvent): Promise<void> {
     event.preventDefault();
     if (!owner) return;
+    const images = venueForm.images.split(",").map((item) => item.trim()).filter(Boolean);
+    if (images.length < 3) {
+      setMessage("Добавьте минимум 3 фотографии площадки");
+      return;
+    }
 
     const response = await fetch(`${API}/api/owner/venues`, {
       method: "POST",
@@ -456,7 +1588,7 @@ function OwnerPage() {
         pricePerHour: Number(venueForm.pricePerHour),
         description: venueForm.description,
         amenities: venueForm.amenities.split(",").map((item) => item.trim()).filter(Boolean),
-        images: venueForm.images.split(",").map((item) => item.trim()).filter(Boolean),
+        images,
       })
     });
 
@@ -469,10 +1601,43 @@ function OwnerPage() {
     setMessage("Площадка добавлена");
     setVenueForm({ ...venueForm, title: "", address: "", description: "" });
     await loadOwnerVenues(owner.id);
+    await loadOwnerDashboard(owner.id);
   }
 
+  async function updateLeadStatus(requestId: string, status: OwnerLead["status"]): Promise<void> {
+    if (!owner) return;
+    const response = await fetch(`${API}/api/owner/requests/${encodeURIComponent(requestId)}/status`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ownerId: owner.id, status })
+    });
+    const json = await response.json();
+    if (!response.ok) {
+      setMessage(json.message ?? "Не удалось обновить статус");
+      return;
+    }
+    await loadOwnerRequests(owner.id, requestStatusFilter, requestSlaFilter, requestQuery);
+    await loadOwnerDashboard(owner.id);
+  }
+
+  async function applyRequestFilters(event: FormEvent): Promise<void> {
+    event.preventDefault();
+    if (!owner) return;
+    await loadOwnerRequests(owner.id, requestStatusFilter, requestSlaFilter, requestQuery);
+  }
+
+  const nextAction = useMemo(() => {
+    if (!owner) return "";
+    if (owner.subscriptionStatus !== "active") return "Активируйте подписку, чтобы публиковать площадки и получать заявки.";
+    if (ownerVenues.length === 0) return "Добавьте первую площадку: минимум 3 фото и подробное описание.";
+    const pending = ownerRequests.filter((item) => item.status === "new").length;
+    if (pending > 0) return `У вас ${pending} новых заявок. Рекомендуем ответить в течение 30 минут для лучшей конверсии.`;
+    return "Следующий шаг: улучшайте карточки (фото, удобства, описание) для роста конверсии.";
+  }, [owner, ownerVenues.length, ownerRequests]);
+  const hasAdminKey = Boolean(localStorage.getItem("vmestoru-admin-key")?.trim());
+
   return (
-    <section className="section glass owner-page">
+    <section className="section glass owner-page reveal-on-scroll">
       <h1>
         Кабинет <span className="grad">арендодателя</span>
       </h1>
@@ -492,6 +1657,27 @@ function OwnerPage() {
         </form>
       ) : (
         <>
+          {ownerDashboard ? (
+            <section className="owner-dashboard">
+              <article className="metric-card">
+                <p>Просмотры (mock)</p>
+                <strong>{ownerDashboard.metrics.viewsMock}</strong>
+              </article>
+              <article className="metric-card">
+                <p>Заявки</p>
+                <strong>{ownerDashboard.metrics.leadsTotal}</strong>
+              </article>
+              <article className="metric-card">
+                <p>Подтверждено</p>
+                <strong>{ownerDashboard.metrics.confirmedTotal}</strong>
+              </article>
+              <article className="metric-card">
+                <p>Конверсия</p>
+                <strong>{ownerDashboard.metrics.conversionRate}%</strong>
+              </article>
+            </section>
+          ) : null}
+
           <div className="owner-status">
             <p><strong>{owner.name}</strong> ({owner.email})</p>
             <p>Подписка: {owner.subscriptionStatus === "active" ? "Активна" : "Не активна"}</p>
@@ -501,6 +1687,14 @@ function OwnerPage() {
             ) : (
               <p>Действует до: {owner.nextBillingDate}</p>
             )}
+            {nextAction ? <p className="next-action">{nextAction}</p> : null}
+          </div>
+
+          <div className="owner-admin-tools">
+            <h3>Служебные инструменты</h3>
+            <p className="muted">Модерация отзывов и anti-fraud проверка доступны в отдельной панели.</p>
+            <Link to="/admin/reviews" className="primary owner-admin-link">Открыть модерацию отзывов</Link>
+            <p className="muted">{hasAdminKey ? "ADMIN_NOTIFY_KEY уже сохранен в браузере." : "Для доступа потребуется ADMIN_NOTIFY_KEY."}</p>
           </div>
 
           <form className="owner-venue-form" onSubmit={addVenue}>
@@ -521,7 +1715,11 @@ function OwnerPage() {
             <input placeholder="Категория (например Лофт)" value={venueForm.category} onChange={(e) => setVenueForm({ ...venueForm, category: e.target.value })} />
             <textarea placeholder="Описание" value={venueForm.description} onChange={(e) => setVenueForm({ ...venueForm, description: e.target.value })} required />
             <input placeholder="Удобства через запятую" value={venueForm.amenities} onChange={(e) => setVenueForm({ ...venueForm, amenities: e.target.value })} />
-            <input placeholder="URL фото" value={venueForm.images} onChange={(e) => setVenueForm({ ...venueForm, images: e.target.value })} />
+            <input
+              placeholder="URL фото через запятую (минимум 3)"
+              value={venueForm.images}
+              onChange={(e) => setVenueForm({ ...venueForm, images: e.target.value })}
+            />
             <button type="submit" className="primary">Добавить площадку</button>
           </form>
 
@@ -533,12 +1731,76 @@ function OwnerPage() {
                   <img src={venue.images[0]} alt={venue.title} />
                   <div className="card-body">
                     <h3>{venue.title}</h3>
-                    <p>{venue.category}</p>
+                    <p><span className="category-pill">{venue.category}</span></p>
                     <p>{venue.address}</p>
+                    <span className="rating-corner">★ {venue.rating}</span>
                   </div>
                 </article>
               ))}
             </div>
+          </section>
+
+          {ownerDashboard?.completeness?.length ? (
+            <section className="owner-completeness">
+              <h3>Качество карточек</h3>
+              {ownerDashboard.completeness.map((item) => (
+                <article key={item.venueId} className="completeness-item">
+                  <div className="row-between">
+                    <strong>{item.venueTitle}</strong>
+                    <span>{item.score}%</span>
+                  </div>
+                  <div className="progress">
+                    <span style={{ width: `${item.score}%` }} />
+                  </div>
+                  <p>{item.tip}</p>
+                </article>
+              ))}
+            </section>
+          ) : null}
+
+          <section className="owner-requests">
+            <h3>Заявки арендаторов</h3>
+            <form className="requests-filters" onSubmit={applyRequestFilters}>
+              <input
+                placeholder="Поиск: имя, телефон, площадка"
+                value={requestQuery}
+                onChange={(e) => setRequestQuery(e.target.value)}
+              />
+              <select value={requestStatusFilter} onChange={(e) => setRequestStatusFilter(e.target.value)}>
+                <option value="">Все статусы</option>
+                <option value="new">Новые</option>
+                <option value="in_progress">В работе</option>
+                <option value="call_scheduled">Созвон</option>
+                <option value="confirmed">Подтверждено</option>
+                <option value="rejected">Отклонено</option>
+              </select>
+              <select value={requestSlaFilter} onChange={(e) => setRequestSlaFilter(e.target.value)}>
+                <option value="">SLA: все</option>
+                <option value="breached">SLA нарушен</option>
+                <option value="ok">SLA в норме</option>
+              </select>
+              <button type="submit" className="chip">Применить</button>
+            </form>
+            {ownerRequests.length === 0 ? <p>Пока нет заявок</p> : null}
+            {ownerRequests.map((request) => (
+              <article key={request.id} className="request-card">
+                <div className="row-between">
+                  <strong>{request.name} · {request.phone}</strong>
+                  <span className={request.isSlaBreached ? "sla-bad" : "sla-ok"}>
+                    SLA {request.responseSlaMinutes} мин · прошло {request.ageMinutes} мин
+                  </span>
+                </div>
+                <p>{request.venueTitle} · {request.venueAddress}</p>
+                {request.comment ? <p>{request.comment}</p> : null}
+                <div className="status-actions">
+                  <button type="button" className="chip" onClick={() => void updateLeadStatus(request.id, "in_progress")}>В работе</button>
+                  <button type="button" className="chip" onClick={() => void updateLeadStatus(request.id, "call_scheduled")}>Созвон</button>
+                  <button type="button" className="chip" onClick={() => void updateLeadStatus(request.id, "confirmed")}>Подтвердить</button>
+                  <button type="button" className="chip" onClick={() => void updateLeadStatus(request.id, "rejected")}>Отклонить</button>
+                </div>
+                <p className="muted">Текущий статус: {request.status}</p>
+              </article>
+            ))}
           </section>
         </>
       )}
@@ -548,23 +1810,499 @@ function OwnerPage() {
   );
 }
 
-function App() {
-  const [theme, toggleTheme] = useTheme();
+function AdminReviewsPage() {
+  const [adminKey, setAdminKey] = useState(() => localStorage.getItem("vmestoru-admin-key") ?? "");
+  const [moderatorName, setModeratorName] = useState(() => localStorage.getItem("vmestoru-moderator-name") ?? "Moderator");
+  const [status, setStatus] = useState("pending");
+  const [riskMin, setRiskMin] = useState("0");
+  const [flaggedOnly, setFlaggedOnly] = useState(false);
+  const [reviews, setReviews] = useState<AdminReview[]>([]);
+  const [summary, setSummary] = useState<AdminReviewSummary | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+  const [notes, setNotes] = useState<Record<string, string>>({});
+  const [activeReviewId, setActiveReviewId] = useState("");
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+
+  useEffect(() => {
+    applySeo({
+      title: "Модерация отзывов — VmestoRu",
+      description: "Очередь модерации отзывов с антифрод-сигналами и ручным подтверждением публикации.",
+      path: "/admin/reviews",
+      noindex: true,
+      jsonLd: [
+        {
+          id: "admin-reviews-page",
+          payload: {
+            "@context": "https://schema.org",
+            "@type": "WebPage",
+            name: "Модерация отзывов",
+            url: `${SITE_URL}/admin/reviews`,
+          },
+        },
+      ],
+    });
+  }, []);
+
+  useEffect(() => {
+    if (!adminKey.trim()) return;
+    void loadReviews(status);
+  }, [status]);
+
+  async function loadReviews(nextStatus: string): Promise<void> {
+    if (!adminKey.trim()) {
+      setError("Введите ADMIN_NOTIFY_KEY для доступа к модерации.");
+      setReviews([]);
+      return;
+    }
+    setLoading(true);
+    setError("");
+    const query = nextStatus ? `?status=${encodeURIComponent(nextStatus)}` : "";
+    try {
+      const response = await fetch(`${API}/api/admin/reviews${query}`, {
+        headers: { "x-admin-key": adminKey.trim() },
+      });
+      if (!response.ok) {
+        setError(response.status === 403 ? "Неверный ADMIN_NOTIFY_KEY." : "Не удалось загрузить очередь модерации.");
+        setReviews([]);
+      } else {
+        setReviews((await response.json()) as AdminReview[]);
+        setSelectedIds([]);
+        void loadSummary();
+      }
+    } catch {
+      setError("Ошибка сети при загрузке модерации.");
+      setReviews([]);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function moderateReview(reviewId: string, nextStatus: "published" | "hidden"): Promise<void> {
+    if (!adminKey.trim()) return;
+    setActiveReviewId(reviewId);
+    setError("");
+    try {
+      const response = await fetch(`${API}/api/admin/reviews/${encodeURIComponent(reviewId)}/moderate`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-admin-key": adminKey.trim(),
+        },
+        body: JSON.stringify({ status: nextStatus, note: notes[reviewId] ?? "", moderator: moderatorName.trim() || "Moderator" }),
+      });
+      if (!response.ok) {
+        const payload = (await response.json().catch(() => ({}))) as { message?: string };
+        setError(payload.message ?? "Не удалось выполнить модерацию.");
+        return;
+      }
+      await loadReviews(status);
+    } finally {
+      setActiveReviewId("");
+    }
+  }
+
+  async function moderateBulk(nextStatus: "published" | "hidden"): Promise<void> {
+    if (!adminKey.trim() || selectedIds.length === 0) return;
+    setActiveReviewId("bulk");
+    setError("");
+    try {
+      await Promise.all(
+        selectedIds.map((reviewId) =>
+          fetch(`${API}/api/admin/reviews/${encodeURIComponent(reviewId)}/moderate`, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "x-admin-key": adminKey.trim(),
+            },
+            body: JSON.stringify({ status: nextStatus, note: notes[reviewId] ?? "", moderator: moderatorName.trim() || "Moderator" }),
+          })
+        )
+      );
+      await loadReviews(status);
+    } catch {
+      setError("Не удалось выполнить bulk-модерацию.");
+    } finally {
+      setActiveReviewId("");
+    }
+  }
+
+  function toggleSelected(reviewId: string): void {
+    setSelectedIds((prev) => (prev.includes(reviewId) ? prev.filter((id) => id !== reviewId) : [...prev, reviewId]));
+  }
+
+  function toggleAllFiltered(items: AdminReview[]): void {
+    const ids = items.map((item) => item.id);
+    if (!ids.length) return;
+    const allSelected = ids.every((id) => selectedIds.includes(id));
+    if (allSelected) {
+      setSelectedIds((prev) => prev.filter((id) => !ids.includes(id)));
+    } else {
+      setSelectedIds((prev) => [...new Set([...prev, ...ids])]);
+    }
+  }
+
+  function saveAdminKey(event: FormEvent): void {
+    event.preventDefault();
+    const normalized = adminKey.trim();
+    localStorage.setItem("vmestoru-admin-key", normalized);
+    void loadReviews(status);
+  }
+
+  async function loadSummary(): Promise<void> {
+    if (!adminKey.trim()) return;
+    try {
+      const response = await fetch(`${API}/api/admin/reviews/summary`, {
+        headers: { "x-admin-key": adminKey.trim() },
+      });
+      if (!response.ok) return;
+      setSummary((await response.json()) as AdminReviewSummary);
+    } catch {
+      // ignore summary fetch errors
+    }
+  }
+
+  const filteredReviews = useMemo(() => {
+    const riskThreshold = Number.parseInt(riskMin || "0", 10);
+    const minRisk = Number.isFinite(riskThreshold) ? Math.max(0, riskThreshold) : 0;
+    return reviews.filter((item) => item.riskScore >= minRisk).filter((item) => (flaggedOnly ? item.riskFlags.length > 0 : true));
+  }, [reviews, riskMin, flaggedOnly]);
 
   return (
-    <BrowserRouter>
-      <div className="app-shell">
-        <div className="animated-background" aria-hidden="true" />
-        <Header theme={theme} onToggleTheme={toggleTheme} />
-        <main>
-          <Routes>
-            <Route path="/" element={<HomePage />} />
-            <Route path="/venue/:id" element={<VenuePage />} />
-            <Route path="/owner" element={<OwnerPage />} />
-          </Routes>
-        </main>
+    <section className="section glass reveal-on-scroll">
+      <Breadcrumbs items={[{ label: "Главная", to: "/" }, { label: "Модерация отзывов" }]} />
+      <h1>Модерация отзывов</h1>
+      <p className="muted">Публикуйте только подтвержденные отзывы и скрывайте подозрительные кейсы по риск-флагам.</p>
+
+      <form className="admin-key-form" onSubmit={saveAdminKey}>
+        <label className="filter-item">
+          <span>ADMIN_NOTIFY_KEY</span>
+          <input
+            value={adminKey}
+            onChange={(e) => setAdminKey(e.target.value)}
+            placeholder="Введите ключ из apps/api/.env"
+          />
+        </label>
+        <button type="submit" className="primary">Подключить</button>
+      </form>
+      <div className="admin-filters">
+        <label className="filter-item">
+          <span>Имя модератора</span>
+          <input
+            value={moderatorName}
+            onChange={(e) => {
+              setModeratorName(e.target.value);
+              localStorage.setItem("vmestoru-moderator-name", e.target.value);
+            }}
+            placeholder="Например, QA Lead"
+          />
+        </label>
       </div>
+
+      {summary ? (
+        <section className="moderation-summary">
+          <article className="metric-card"><p>Всего</p><strong>{summary.total}</strong></article>
+          <article className="metric-card"><p>Pending</p><strong>{summary.pending}</strong></article>
+          <article className="metric-card"><p>High-risk pending</p><strong>{summary.highRiskPending}</strong></article>
+          <article className="metric-card"><p>Avg risk pending</p><strong>{summary.avgRiskPending}</strong></article>
+        </section>
+      ) : null}
+
+      <div className="admin-filters">
+        <label className="filter-item">
+          <span>Статус</span>
+          <select value={status} onChange={(e) => setStatus(e.target.value)}>
+            <option value="pending">Ожидают</option>
+            <option value="published">Опубликованы</option>
+            <option value="hidden">Скрыты</option>
+          </select>
+        </label>
+        <button type="button" className="ghost-btn" onClick={() => void loadReviews(status)}>Обновить</button>
+      </div>
+      <div className="admin-filters">
+        <label className="filter-item">
+          <span>Risk score от</span>
+          <input type="number" min="0" max="100" value={riskMin} onChange={(e) => setRiskMin(e.target.value)} />
+        </label>
+        <label className="filter-item admin-flag-toggle">
+          <span>Показывать только с флагами</span>
+          <button type="button" className={flaggedOnly ? "chip active" : "chip"} onClick={() => setFlaggedOnly((prev) => !prev)}>
+            {flaggedOnly ? "Да" : "Нет"}
+          </button>
+        </label>
+      </div>
+      <div className="moderation-toolbar">
+        <button type="button" className="chip" onClick={() => toggleAllFiltered(filteredReviews)}>
+          {filteredReviews.length > 0 && filteredReviews.every((item) => selectedIds.includes(item.id))
+            ? "Снять выбор"
+            : "Выбрать все"}
+        </button>
+        <span className="muted">Выбрано: {selectedIds.length}</span>
+        <button type="button" className="primary" disabled={selectedIds.length === 0 || activeReviewId === "bulk"} onClick={() => void moderateBulk("published")}>
+          Bulk: опубликовать
+        </button>
+        <button type="button" className="ghost-btn" disabled={selectedIds.length === 0 || activeReviewId === "bulk"} onClick={() => void moderateBulk("hidden")}>
+          Bulk: скрыть
+        </button>
+      </div>
+
+      {loading ? <p className="muted">Загрузка очереди модерации...</p> : null}
+      {error ? <p className="error-note">{error}</p> : null}
+
+      {!loading && !error && filteredReviews.length === 0 ? (
+        <div className="empty-state">
+          <h3>Очередь пуста</h3>
+          <p>Для выбранных фильтров пока нет отзывов.</p>
+        </div>
+      ) : null}
+
+      <div className="moderation-list">
+        {filteredReviews.map((review) => (
+          <article key={review.id} className="moderation-card">
+            <div className="row-between">
+              <strong>{review.venueTitle}</strong>
+              <div className="moderation-meta">
+                <button
+                  type="button"
+                  className={selectedIds.includes(review.id) ? "chip active" : "chip"}
+                  onClick={() => toggleSelected(review.id)}
+                >
+                  {selectedIds.includes(review.id) ? "Выбрано" : "Выбрать"}
+                </button>
+                <span className="chip">★ {review.rating}</span>
+              </div>
+            </div>
+            <p className="muted">
+              {review.author} · {new Date(review.createdAt).toLocaleString("ru-RU")}
+            </p>
+            <p>{review.text}</p>
+            <p className={review.riskScore >= 60 ? "risk-high" : "muted"}>Risk score: {review.riskScore}</p>
+            <p className="muted">Флаги: {review.riskFlags.length ? review.riskFlags.join(", ") : "нет"}</p>
+            <textarea
+              placeholder="Комментарий модератора (необязательно)"
+              value={notes[review.id] ?? ""}
+              onChange={(e) => setNotes((prev) => ({ ...prev, [review.id]: e.target.value }))}
+            />
+            <div className="empty-actions">
+              <button
+                type="button"
+                className="primary"
+                onClick={() => void moderateReview(review.id, "published")}
+                disabled={activeReviewId === review.id}
+              >
+                Опубликовать
+              </button>
+              <button
+                type="button"
+                className="ghost-btn"
+                onClick={() => void moderateReview(review.id, "hidden")}
+                disabled={activeReviewId === review.id}
+              >
+                Скрыть
+              </button>
+            </div>
+          </article>
+        ))}
+      </div>
+      {summary?.recentActions?.length ? (
+        <section className="section similar-block reveal-on-scroll">
+          <h3>Последние действия модерации</h3>
+          {summary.recentActions.slice(0, 6).map((item) => (
+            <p key={item.id} className="muted">
+              {new Date(item.createdAt).toLocaleString("ru-RU")} · {item.moderator} · {item.reviewId}: {item.previousStatus} → {item.nextStatus}
+            </p>
+          ))}
+        </section>
+      ) : null}
+    </section>
+  );
+}
+
+function PrivacyPage() {
+  useEffect(() => {
+    applySeo({
+      title: "Политика конфиденциальности — VmestoRu",
+      description: "Политика обработки персональных данных сервиса VmestoRu.",
+      path: "/privacy",
+      jsonLd: [
+        {
+          id: "privacy-page",
+          payload: {
+            "@context": "https://schema.org",
+            "@type": "WebPage",
+            name: "Политика конфиденциальности",
+            url: `${SITE_URL}/privacy`,
+          },
+        },
+      ],
+    });
+  }, []);
+
+  return (
+    <section className="section glass legal-page reveal-on-scroll">
+      <h1>Политика конфиденциальности</h1>
+      <p>
+        Сервис VmestoRu обрабатывает персональные данные пользователей для работы поиска площадок, заявок арендодателям и
+        улучшения качества сервиса.
+      </p>
+      <h3>Какие данные мы собираем</h3>
+      <p>Имя, email, телефон, технические данные устройства, cookies и действия на сайте.</p>
+      <h3>Для чего используется информация</h3>
+      <p>Для подбора площадок, обратной связи, обеспечения безопасности и аналитики продукта.</p>
+      <h3>Передача данных</h3>
+      <p>Данные передаются только в рамках законодательства РФ и только сервисам, участвующим в работе платформы.</p>
+      <h3>Cookies</h3>
+      <p>Мы используем cookies для сохранения темы, улучшения UX и корректной работы личного кабинета арендодателя.</p>
+      <p>По вопросам обработки данных: privacy@vmestoru.ru</p>
+    </section>
+  );
+}
+
+function NotFoundPage() {
+  const location = useLocation();
+
+  useEffect(() => {
+    applySeo({
+      title: "Страница не найдена — VmestoRu",
+      description: "Запрошенная страница не найдена. Перейдите в каталог площадок VmestoRu.",
+      path: location.pathname || "/404",
+      noindex: true,
+      jsonLd: [
+        {
+          id: "not-found-page",
+          payload: {
+            "@context": "https://schema.org",
+            "@type": "WebPage",
+            name: "404",
+            url: `${SITE_URL}${location.pathname || "/404"}`,
+          },
+        },
+      ],
+    });
+  }, [location.pathname]);
+
+  return (
+    <section className="section glass reveal-on-scroll">
+      <h1>Страница не найдена</h1>
+      <div className="empty-state">
+        <p>Похоже, ссылка устарела или была введена с ошибкой.</p>
+        <div className="empty-actions">
+          <Link to="/" className="primary">На главную</Link>
+          <Link to="/catalog" className="become-owner">Открыть каталог</Link>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function CookieBanner() {
+  const [accepted, setAccepted] = useState(() => localStorage.getItem("vmestoru-cookie-consent") === "accepted");
+  if (accepted) return null;
+
+  return (
+    <div className="cookie-banner glass">
+      <p>Мы используем cookies для стабильной работы сервиса и аналитики.</p>
+      <div className="cookie-actions">
+        <Link to="/privacy">Политика конфиденциальности</Link>
+        <button
+          type="button"
+          className="primary"
+          onClick={() => {
+            localStorage.setItem("vmestoru-cookie-consent", "accepted");
+            setAccepted(true);
+          }}
+        >
+          Принять
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function Footer() {
+  return (
+    <footer id="support" className="footer glass">
+      <div className="footer-grid">
+        <div>
+          <strong>VmestoRu</strong>
+          <p>Премиальная платформа аренды площадок под мероприятия.</p>
+        </div>
+        <div>
+          <h4>Навигация</h4>
+          <p><Link to="/">Каталог</Link></p>
+          <p><Link to="/owner">Арендодателю</Link></p>
+          <p><Link to="/privacy">Политика конфиденциальности</Link></p>
+        </div>
+        <div>
+          <h4>Контакты</h4>
+          <p>+7 (900) 123-45-67</p>
+          <p>hello@vmestoru.ru</p>
+        </div>
+      </div>
+      <p className="footer-copy">© {new Date().getFullYear()} VmestoRu. Все права защищены.</p>
+    </footer>
+  );
+}
+
+function App() {
+  const [theme, toggleTheme] = useTheme();
+  return (
+    <BrowserRouter>
+      <AppContent theme={theme} onToggleTheme={toggleTheme} />
     </BrowserRouter>
+  );
+}
+
+function AppContent({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: () => void }) {
+  const location = useLocation();
+  useEffect(() => {
+    const targets = Array.from(document.querySelectorAll<HTMLElement>(".reveal-on-scroll"));
+    if (targets.length === 0) return;
+
+    if (!("IntersectionObserver" in window)) {
+      targets.forEach((item) => item.classList.add("is-visible"));
+      return;
+    }
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((entry) => {
+          if (entry.isIntersecting) {
+            entry.target.classList.add("is-visible");
+          } else {
+            entry.target.classList.remove("is-visible");
+          }
+        });
+      },
+      { threshold: 0.18 }
+    );
+
+    targets.forEach((item) => observer.observe(item));
+
+    return () => {
+      observer.disconnect();
+    };
+  }, [location.pathname]);
+
+  return (
+    <div className="app-shell">
+      <div className="animated-background" aria-hidden="true" />
+      <Header theme={theme} onToggleTheme={onToggleTheme} />
+      <main>
+        <Routes>
+          <Route path="/" element={<HomePage />} />
+          <Route path="/catalog" element={<CatalogPage />} />
+          <Route path="/category/:slug" element={<CategoryPage />} />
+          <Route path="/venue/:id" element={<VenuePage />} />
+          <Route path="/owner" element={<OwnerPage />} />
+          <Route path="/admin/reviews" element={<AdminReviewsPage />} />
+          <Route path="/privacy" element={<PrivacyPage />} />
+          <Route path="*" element={<NotFoundPage />} />
+        </Routes>
+      </main>
+      <Footer />
+      <CookieBanner />
+    </div>
   );
 }
 

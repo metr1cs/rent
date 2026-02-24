@@ -1,0 +1,15 @@
+{
+  "agent": "QAAutomationAgent",
+  "version": [
+    "v1",
+    "20260223"
+  ],
+  "focus": [
+    "automate critical regression paths",
+    "reduce manual QA workload"
+  ],
+  "tighten": [
+    "block release on failing smoke checks"
+  ],
+  "relax": []
+}

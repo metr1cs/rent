@@ -32,6 +32,13 @@ export type Review = {
   author: string;
   rating: number;
   text: string;
+  requesterName: string;
+  requesterPhone: string;
+  sourceLeadRequestId: string;
+  verified: boolean;
+  status: "pending" | "published" | "hidden";
+  riskScore: number;
+  riskFlags: string[];
   createdAt: string;
 };
 
@@ -42,6 +49,8 @@ export type LeadRequest = {
   phone: string;
   comment: string;
   createdAt: string;
+  status: "new" | "in_progress" | "call_scheduled" | "confirmed" | "rejected";
+  updatedAt: string;
 };
 
 export type Owner = {
@@ -52,6 +61,43 @@ export type Owner = {
   subscriptionStatus: "inactive" | "active";
   subscriptionPlan: "monthly_2000";
   nextBillingDate: string | null;
+};
+
+export type Payment = {
+  id: string;
+  ownerId: string;
+  amountRub: number;
+  periodDays: number;
+  status: "paid" | "failed";
+  paidAt: string;
+  nextBillingDate: string;
+  method: "mock";
+};
+
+export type AnalyticsEvent = {
+  id: string;
+  event:
+    | "home_view"
+    | "catalog_view"
+    | "category_open"
+    | "category_filter_apply"
+    | "venue_view"
+    | "lead_submit"
+    | "owner_register"
+    | "owner_login";
+  createdAt: string;
+  meta: Record<string, string | number | boolean>;
+};
+
+export type ReviewModerationAudit = {
+  id: string;
+  reviewId: string;
+  venueId: string;
+  previousStatus: "pending" | "published" | "hidden";
+  nextStatus: "published" | "hidden";
+  note?: string;
+  moderator: string;
+  createdAt: string;
 };
 
 const allCategoryNames = [
@@ -149,7 +195,14 @@ export const reviews: Review[] = [
     author: "Анна",
     rating: 5,
     text: "Отличная площадка, быстрый ответ арендодателя.",
-    createdAt: makeDate(-10)
+    requesterName: "Анна",
+    requesterPhone: "+79000000001",
+    sourceLeadRequestId: "seed-L-1",
+    verified: true,
+    status: "published",
+    riskScore: 8,
+    riskFlags: [],
+    createdAt: `${makeDate(-10)}T10:00:00.000Z`
   },
   {
     id: "R-2",
@@ -157,7 +210,14 @@ export const reviews: Review[] = [
     author: "Игорь",
     rating: 4,
     text: "Хороший зал и удобное расположение.",
-    createdAt: makeDate(-6)
+    requesterName: "Игорь",
+    requesterPhone: "+79000000002",
+    sourceLeadRequestId: "seed-L-2",
+    verified: true,
+    status: "published",
+    riskScore: 12,
+    riskFlags: [],
+    createdAt: `${makeDate(-6)}T12:30:00.000Z`
   }
 ];
 
@@ -175,11 +235,28 @@ export const owners: Owner[] = [
   }
 ];
 
+export const payments: Payment[] = [
+  {
+    id: "P-1",
+    ownerId: "O-1",
+    amountRub: 2000,
+    periodDays: 30,
+    status: "paid",
+    paidAt: makeDate(-6),
+    nextBillingDate: makeDate(24),
+    method: "mock"
+  }
+];
+
+export const analyticsEvents: AnalyticsEvent[] = [];
+
+export const reviewModerationAudit: ReviewModerationAudit[] = [];
+
 export function recalculateVenueRating(venueId: string): void {
   const venue = venues.find((item) => item.id === venueId);
   if (!venue) return;
 
-  const venueReviews = reviews.filter((item) => item.venueId === venueId);
+  const venueReviews = reviews.filter((item) => item.venueId === venueId && item.verified && item.status === "published");
   if (!venueReviews.length) {
     venue.rating = 0;
     venue.reviewsCount = 0;
