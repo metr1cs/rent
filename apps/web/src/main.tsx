@@ -129,6 +129,179 @@ type OwnerDashboard = {
 
 type Theme = "light" | "dark";
 type UiLanguage = "ru" | "en" | "zh" | "es" | "fr" | "de" | "ar" | "hi" | "pt";
+type UiCopy = {
+  brandTagline: string;
+  catalog: string;
+  howToUse: string;
+  forOwners: string;
+  backToCatalog: string;
+  language: string;
+  openMenu: string;
+  switchTheme: string;
+  footerNav: string;
+  footerCatalog: string;
+  footerOwner: string;
+  footerPrivacy: string;
+  footerContacts: string;
+  footerSupportButton: string;
+  footerLead: string;
+};
+
+const uiCopy: Record<UiLanguage, UiCopy> = {
+  ru: {
+    brandTagline: "Премиальная аренда площадок для мероприятий",
+    catalog: "Каталог",
+    howToUse: "Как пользоваться",
+    forOwners: "Для арендодателей",
+    backToCatalog: "Назад в каталог",
+    language: "Язык",
+    openMenu: "Открыть меню",
+    switchTheme: "Переключить тему",
+    footerNav: "Навигация",
+    footerCatalog: "Каталог",
+    footerOwner: "Арендодателю",
+    footerPrivacy: "Политика конфиденциальности",
+    footerContacts: "Контакты",
+    footerSupportButton: "Написать в поддержку",
+    footerLead: "Премиальная платформа аренды площадок под мероприятия."
+  },
+  en: {
+    brandTagline: "Premium event space rentals",
+    catalog: "Catalog",
+    howToUse: "How it works",
+    forOwners: "For owners",
+    backToCatalog: "Back to catalog",
+    language: "Language",
+    openMenu: "Open menu",
+    switchTheme: "Switch theme",
+    footerNav: "Navigation",
+    footerCatalog: "Catalog",
+    footerOwner: "For owners",
+    footerPrivacy: "Privacy policy",
+    footerContacts: "Contacts",
+    footerSupportButton: "Contact support",
+    footerLead: "Premium platform for event venue rentals."
+  },
+  zh: {
+    brandTagline: "高端活动场地租赁平台",
+    catalog: "目录",
+    howToUse: "使用方式",
+    forOwners: "房东入口",
+    backToCatalog: "返回目录",
+    language: "语言",
+    openMenu: "打开菜单",
+    switchTheme: "切换主题",
+    footerNav: "导航",
+    footerCatalog: "目录",
+    footerOwner: "房东入口",
+    footerPrivacy: "隐私政策",
+    footerContacts: "联系方式",
+    footerSupportButton: "联系支持",
+    footerLead: "高端活动场地租赁平台。"
+  },
+  es: {
+    brandTagline: "Alquiler premium de espacios para eventos",
+    catalog: "Catalogo",
+    howToUse: "Como funciona",
+    forOwners: "Para propietarios",
+    backToCatalog: "Volver al catalogo",
+    language: "Idioma",
+    openMenu: "Abrir menu",
+    switchTheme: "Cambiar tema",
+    footerNav: "Navegacion",
+    footerCatalog: "Catalogo",
+    footerOwner: "Para propietarios",
+    footerPrivacy: "Politica de privacidad",
+    footerContacts: "Contactos",
+    footerSupportButton: "Contactar soporte",
+    footerLead: "Plataforma premium de alquiler de espacios para eventos."
+  },
+  fr: {
+    brandTagline: "Location premium d'espaces evenementiels",
+    catalog: "Catalogue",
+    howToUse: "Comment ca marche",
+    forOwners: "Pour les proprietaires",
+    backToCatalog: "Retour au catalogue",
+    language: "Langue",
+    openMenu: "Ouvrir le menu",
+    switchTheme: "Changer le theme",
+    footerNav: "Navigation",
+    footerCatalog: "Catalogue",
+    footerOwner: "Pour les proprietaires",
+    footerPrivacy: "Politique de confidentialite",
+    footerContacts: "Contacts",
+    footerSupportButton: "Contacter le support",
+    footerLead: "Plateforme premium de location d'espaces evenementiels."
+  },
+  de: {
+    brandTagline: "Premium-Mietplattform fur Eventflachen",
+    catalog: "Katalog",
+    howToUse: "So funktioniert's",
+    forOwners: "Fur Vermieter",
+    backToCatalog: "Zuruck zum Katalog",
+    language: "Sprache",
+    openMenu: "Menu offnen",
+    switchTheme: "Thema wechseln",
+    footerNav: "Navigation",
+    footerCatalog: "Katalog",
+    footerOwner: "Fur Vermieter",
+    footerPrivacy: "Datenschutzrichtlinie",
+    footerContacts: "Kontakte",
+    footerSupportButton: "Support kontaktieren",
+    footerLead: "Premium-Plattform fur die Vermietung von Eventflachen."
+  },
+  ar: {
+    brandTagline: "منصة مميزة لتأجير أماكن الفعاليات",
+    catalog: "الكتالوج",
+    howToUse: "كيفية الاستخدام",
+    forOwners: "للملاك",
+    backToCatalog: "العودة إلى الكتالوج",
+    language: "اللغة",
+    openMenu: "فتح القائمة",
+    switchTheme: "تبديل المظهر",
+    footerNav: "التنقل",
+    footerCatalog: "الكتالوج",
+    footerOwner: "للملاك",
+    footerPrivacy: "سياسة الخصوصية",
+    footerContacts: "جهات الاتصال",
+    footerSupportButton: "تواصل مع الدعم",
+    footerLead: "منصة مميزة لتأجير أماكن الفعاليات."
+  },
+  hi: {
+    brandTagline: "इवेंट स्पेस रेंटल के लिए प्रीमियम प्लेटफॉर्म",
+    catalog: "कैटलॉग",
+    howToUse: "कैसे उपयोग करें",
+    forOwners: "मालिकों के लिए",
+    backToCatalog: "कैटलॉग पर वापस",
+    language: "भाषा",
+    openMenu: "मेनू खोलें",
+    switchTheme: "थीम बदलें",
+    footerNav: "नेविगेशन",
+    footerCatalog: "कैटलॉग",
+    footerOwner: "मालिकों के लिए",
+    footerPrivacy: "गोपनीयता नीति",
+    footerContacts: "संपर्क",
+    footerSupportButton: "सपोर्ट से संपर्क करें",
+    footerLead: "इवेंट स्पेस रेंटल के लिए प्रीमियम प्लेटफॉर्म।"
+  },
+  pt: {
+    brandTagline: "Plataforma premium de locacao de espacos para eventos",
+    catalog: "Catalogo",
+    howToUse: "Como usar",
+    forOwners: "Para proprietarios",
+    backToCatalog: "Voltar ao catalogo",
+    language: "Idioma",
+    openMenu: "Abrir menu",
+    switchTheme: "Alternar tema",
+    footerNav: "Navegacao",
+    footerCatalog: "Catalogo",
+    footerOwner: "Para proprietarios",
+    footerPrivacy: "Politica de privacidade",
+    footerContacts: "Contatos",
+    footerSupportButton: "Falar com suporte",
+    footerLead: "Plataforma premium de locacao de espacos para eventos."
+  }
+};
 
 const envApiBase = (import.meta.env.VITE_API_URL as string | undefined)?.trim();
 const inferredApiBase =
@@ -378,6 +551,7 @@ function useLanguage(): [UiLanguage, (next: UiLanguage) => void] {
   useEffect(() => {
     localStorage.setItem("vmestoru-language", language);
     document.documentElement.lang = language;
+    document.documentElement.dir = language === "ar" ? "rtl" : "ltr";
   }, [language]);
 
   return [language, (next) => setLanguage(next)];
@@ -439,6 +613,7 @@ function Header({
   const location = useLocation();
   const isOwnerRoute = location.pathname.startsWith("/owner");
   const [menuOpen, setMenuOpen] = useState(false);
+  const t = uiCopy[language];
 
   useEffect(() => {
     setMenuOpen(false);
@@ -450,15 +625,19 @@ function Header({
         <img src="/favicon.svg" alt="Логотип VmestoRu" className="brand-logo" width={68} height={68} />
         <div>
           <strong>VmestoRu</strong>
-          <p>Премиальная аренда площадок для мероприятий</p>
+          <p>{t.brandTagline}</p>
         </div>
       </Link>
+      <nav className="header-nav">
+        <Link to="/catalog">{t.catalog}</Link>
+        <a href="/#how-it-works">{t.howToUse}</a>
+      </nav>
 
       <div className="header-controls">
         <button
           type="button"
           className={menuOpen ? "header-burger is-open" : "header-burger"}
-          aria-label="Открыть меню"
+          aria-label={t.openMenu}
           aria-expanded={menuOpen}
           onClick={() => setMenuOpen((prev) => !prev)}
         >
@@ -471,10 +650,10 @@ function Header({
       <div className={menuOpen ? "header-menu open" : "header-menu"}>
         <div className="header-actions">
           <Link to={isOwnerRoute ? "/" : "/owner"} className="become-owner">
-            {isOwnerRoute ? "Назад в каталог" : "Для арендодателей"}
+            {isOwnerRoute ? t.backToCatalog : t.forOwners}
           </Link>
           <label className="filter-item header-language">
-            <span>Язык</span>
+            <span>{t.language}</span>
             <select value={language} onChange={(e) => onLanguageChange(e.target.value as UiLanguage)}>
               <option value="ru">Русский</option>
               <option value="en">English</option>
@@ -491,8 +670,8 @@ function Header({
             type="button"
             className={theme === "dark" ? "theme-switch is-dark" : "theme-switch"}
             onClick={onToggleTheme}
-            aria-label="Переключить тему"
-            title="Переключить тему"
+            aria-label={t.switchTheme}
+            title={t.switchTheme}
           >
             <span className="theme-switch-track" aria-hidden="true">
               <span className="theme-switch-thumb">{theme === "light" ? "☀" : "☾"}</span>
@@ -2291,8 +2470,6 @@ function OwnerPage() {
     if (pending > 0) return `У вас ${pending} новых заявок. Рекомендуем ответить в течение 30 минут для лучшей конверсии.`;
     return "Следующий шаг: улучшайте карточки (фото, удобства, описание) для роста конверсии.";
   }, [owner, ownerVenues.length, ownerRequests]);
-  const hasAdminSession = Boolean(localStorage.getItem("vmestoru-admin-session")?.trim());
-
   return (
     <section className="section glass owner-page reveal-on-scroll">
       <h1>
@@ -2342,13 +2519,6 @@ function OwnerPage() {
             <p>Пробный доступ до: {owner.trialEndsAt}</p>
             <p>{ownerDashboard?.trial ? `Осталось дней: ${ownerDashboard.trial.daysLeft}` : owner.trialStatus === "active" ? "Пробный доступ активен" : "Пробный доступ завершен"}</p>
             {nextAction ? <p className="next-action">{nextAction}</p> : null}
-          </div>
-
-          <div className="owner-admin-tools">
-            <h3>Служебные инструменты</h3>
-            <p className="muted">Модерация отзывов и anti-fraud проверка доступны в отдельной панели.</p>
-            <Link to="/admin/reviews" className="primary owner-admin-link">Открыть модерацию отзывов</Link>
-            <p className="muted">{hasAdminSession ? "Сессия модератора активна в этом браузере." : "Для входа в модерацию потребуется ключ доступа."}</p>
           </div>
 
           <form className="owner-venue-form" onSubmit={addVenue}>
@@ -2474,7 +2644,7 @@ function OwnerPage() {
                     <p>{venue.areaSqm} м2 · {venue.capacity} гостей</p>
                     <p>{venue.address}</p>
                     <span className="rating-corner">★ {venue.rating}</span>
-                    <button type="button" className="chip owner-edit-btn" onClick={() => startEditVenue(venue)}>Редактировать</button>
+                    <button type="button" className="primary owner-edit-btn" onClick={() => startEditVenue(venue)}>Редактировать</button>
                     <button type="button" className="ghost-btn owner-delete-btn" onClick={() => void deleteVenue(venue.id)}>Удалить</button>
                   </div>
                 </article>
@@ -2990,27 +3160,73 @@ function PrivacyPage() {
     <section className="section glass legal-page reveal-on-scroll">
       <h1>Политика конфиденциальности</h1>
       <p>
-        Настоящая политика описывает, как сервис VmestoRu собирает, использует, хранит и защищает персональные данные
-        пользователей в соответствии с требованиями законодательства РФ.
+        Настоящая Политика определяет порядок обработки и защиты персональных данных пользователей сервиса VmestoRu
+        и подготовлена с учетом требований законодательства Российской Федерации, включая Федеральный закон № 152-ФЗ
+        «О персональных данных», № 149-ФЗ «Об информации, информационных технологиях и о защите информации» и № 242-ФЗ.
       </p>
-      <h3>1. Какие данные мы обрабатываем</h3>
-      <p>Имя, телефон, email (если указан), тексты заявок и обращений, технические данные устройства, cookies, действия в интерфейсе.</p>
-      <h3>2. Цели обработки</h3>
-      <p>Подбор площадок, передача заявок арендодателям, поддержка пользователей, предотвращение злоупотреблений, аналитика качества сервиса.</p>
-      <h3>3. Правовые основания</h3>
-      <p>Обработка выполняется на основании согласия пользователя, исполнения пользовательского запроса и законных интересов оператора.</p>
-      <h3>4. Передача третьим лицам</h3>
-      <p>Данные передаются только тем лицам и сервисам, которые участвуют в оказании услуги: арендодателям, хостинг-провайдерам, Telegram API (для поддержки и уведомлений).</p>
-      <h3>5. Сроки хранения</h3>
-      <p>Данные хранятся не дольше, чем это требуется для целей обработки и выполнения обязательств по заявке, если более длительный срок не установлен законом.</p>
-      <h3>6. Права пользователя</h3>
-      <p>Пользователь вправе запросить уточнение, обновление, ограничение или удаление своих данных, а также отозвать согласие на обработку.</p>
-      <h3>7. Cookies</h3>
-      <p>Cookies используются для сохранения настроек интерфейса, стабильной работы сайта и аналитики пользовательских сценариев.</p>
-      <h3>8. Безопасность</h3>
-      <p>Мы применяем организационные и технические меры защиты, включая ограничение доступа, журналирование административных действий и шифрование трафика (HTTPS).</p>
-      <h3>9. Контакты оператора</h3>
-      <p>По вопросам персональных данных и конфиденциальности: +7 (995) 592-62-60, info@vmestoru.ru, форма обращения в разделе “Поддержка”.</p>
+      <h3>1. Оператор и область действия</h3>
+      <p>
+        Оператором персональных данных является команда сервиса VmestoRu. Политика применяется ко всем данным,
+        получаемым через сайт, формы заявок, личный кабинет арендодателя и обращения в поддержку.
+      </p>
+      <h3>2. Категории персональных данных</h3>
+      <p>
+        Мы обрабатываем: имя, номер телефона, адрес электронной почты (если указан), содержимое заявок и сообщений,
+        данные профиля арендодателя, сведения о площадках, технические журналы событий, IP-адрес, cookies и метаданные браузера.
+      </p>
+      <h3>3. Цели обработки</h3>
+      <p>
+        Данные используются для подбора площадок, передачи заявок арендодателям, исполнения пользовательских запросов,
+        обеспечения работы личного кабинета, клиентской поддержки, предотвращения злоупотреблений, улучшения качества сервиса
+        и соблюдения обязательных требований законодательства.
+      </p>
+      <h3>4. Правовые основания</h3>
+      <p>
+        Основания обработки: согласие субъекта персональных данных, необходимость исполнения договора или преддоговорных действий,
+        законный интерес оператора при условии соблюдения прав пользователя, а также выполнение требований законодательства РФ.
+      </p>
+      <h3>5. Передача и поручение обработки</h3>
+      <p>
+        Данные могут передаваться арендодателям (в части заявки), хостинг-провайдеру, сервисам веб-аналитики,
+        а также техническим подрядчикам в объеме, необходимом для работы платформы. При передаче применяются договорные
+        обязательства о конфиденциальности и защите данных.
+      </p>
+      <h3>6. Трансграничная передача</h3>
+      <p>
+        При использовании внешних сервисов возможна трансграничная передача данных. Такая передача осуществляется
+        только при наличии правового основания и с применением мер защиты, эквивалентных требованиям российского законодательства.
+      </p>
+      <h3>7. Сроки хранения и удаление</h3>
+      <p>
+        Персональные данные хранятся не дольше, чем это требуется для целей обработки, либо в сроки, предусмотренные законом.
+        По достижении целей обработки данные удаляются или обезличиваются, если иное не требуется законодательством.
+      </p>
+      <h3>8. Права субъекта персональных данных</h3>
+      <p>
+        Пользователь вправе запросить доступ к своим данным, уточнение, блокирование, удаление, ограничение обработки,
+        переносимость (если применимо), отзыв согласия и обжалование действий оператора в уполномоченный орган.
+      </p>
+      <h3>9. Cookies и аналитика</h3>
+      <p>
+        Сайт использует cookies и аналогичные технологии для авторизации, сохранения пользовательских настроек,
+        аналитики и повышения удобства интерфейса. Пользователь может изменить настройки cookies в браузере,
+        но это может повлиять на корректность отдельных функций.
+      </p>
+      <h3>10. Меры защиты информации</h3>
+      <p>
+        Мы применяем организационные и технические меры безопасности: разграничение доступа, журналирование действий,
+        резервирование, контроль целостности данных, использование HTTPS, а также регулярные проверки критичных сценариев.
+      </p>
+      <h3>11. Работа с обращениями</h3>
+      <p>
+        Запросы по вопросам обработки персональных данных рассматриваются в разумный срок, предусмотренный законодательством.
+        Для идентификации заявителя оператор может запросить дополнительную информацию.
+      </p>
+      <h3>12. Контакты и обновления Политики</h3>
+      <p>
+        По вопросам персональных данных: info@vmestoru.ru, +7 (995) 592-62-60, форма в разделе поддержки.
+        Оператор вправе обновлять Политику; актуальная редакция публикуется на этой странице и вступает в силу с даты публикации.
+      </p>
     </section>
   );
 }
@@ -3076,10 +3292,11 @@ function CookieBanner() {
   );
 }
 
-function Footer() {
+function Footer({ language }: { language: UiLanguage }) {
   const [supportForm, setSupportForm] = useState({ name: "", phone: "", message: "" });
   const [supportMessage, setSupportMessage] = useState("");
   const [isSupportModalOpen, setSupportModalOpen] = useState(false);
+  const t = uiCopy[language];
 
   async function sendSupportRequest(event: FormEvent): Promise<void> {
     event.preventDefault();
@@ -3106,20 +3323,20 @@ function Footer() {
             <img src="/favicon.svg" alt="Логотип VmestoRu" className="footer-brand-logo" width={56} height={56} />
             <strong>VmestoRu</strong>
           </Link>
-          <p>Премиальная платформа аренды площадок под мероприятия.</p>
+          <p>{t.footerLead}</p>
         </div>
         <div>
-          <h4>Навигация</h4>
-          <p><Link to="/">Каталог</Link></p>
-          <p><Link to="/owner">Арендодателю</Link></p>
-          <p><Link to="/privacy">Политика конфиденциальности</Link></p>
+          <h4>{t.footerNav}</h4>
+          <p><Link to="/catalog">{t.footerCatalog}</Link></p>
+          <p><Link to="/owner">{t.footerOwner}</Link></p>
+          <p><Link to="/privacy">{t.footerPrivacy}</Link></p>
         </div>
         <div>
-          <h4>Контакты</h4>
+          <h4>{t.footerContacts}</h4>
           <p>+7 (995) 592-62-60</p>
           <p><a href="mailto:info@vmestoru.ru">info@vmestoru.ru</a></p>
           <button type="button" className="primary support-open-btn" onClick={() => setSupportModalOpen(true)}>
-            Написать в поддержку
+            {t.footerSupportButton}
           </button>
         </div>
       </div>
@@ -3249,7 +3466,7 @@ function AppContent({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: () 
           <Route path="*" element={<NotFoundPage />} />
         </Routes>
       </main>
-      <Footer />
+      <Footer language={language} />
       <CookieBanner />
     </div>
   );

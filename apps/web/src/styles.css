@@ -92,7 +92,7 @@ body {
 
 .header {
   display: grid;
-  grid-template-columns: 1fr auto;
+  grid-template-columns: auto 1fr auto;
   gap: 12px;
   align-items: center;
   padding: 12px;
@@ -118,6 +118,23 @@ body {
 }
 .brand strong { display: block; font-size: clamp(18px, 2.2vw, 22px); }
 .brand p { margin: 0; color: var(--muted); font-size: 12px; }
+
+.header-nav {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 18px;
+}
+
+.header-nav a {
+  text-decoration: none;
+  color: var(--muted);
+  font-weight: 600;
+}
+
+.header-nav a:hover {
+  color: var(--text);
+}
 
 .nav { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; }
 .nav a { color: var(--muted); text-decoration: none; }
@@ -184,7 +201,8 @@ body {
   display: grid;
 }
 
-.header-actions { display: grid; gap: 8px; }
+.header-actions { display: grid; gap: 50px; }
+.header-actions > .theme-switch { justify-self: end; }
 
 .theme-toggle, .become-owner, button, input, select, textarea {
   font: inherit;
@@ -1316,20 +1334,9 @@ input[type="number"] {
   width: 100%;
 }
 
-.owner-admin-tools {
+.owner-edit-btn {
   margin-top: 10px;
-  border: 1px dashed color-mix(in oklab, var(--line) 78%, transparent);
-  border-radius: 12px;
-  background: color-mix(in oklab, var(--surface-soft) 88%, transparent);
-  padding: 10px;
-}
-
-.owner-admin-tools h3 {
-  margin: 0;
-}
-
-.owner-admin-link {
-  width: fit-content;
+  width: 100%;
 }
 
 .next-action {
@@ -1604,6 +1611,7 @@ input[type="number"] {
 
 @media (max-width: 1100px) {
   .header { grid-template-columns: 1fr auto; }
+  .header-nav { display: none; }
   .nav { justify-content: flex-start; }
   .search-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .category-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
@@ -1623,7 +1631,7 @@ input[type="number"] {
   .header-actions > * { width: 100%; }
   .header-actions > .theme-switch {
     width: 56px;
-    justify-self: start;
+    justify-self: end;
   }
   .search-grid,
   .catalog-filters,
