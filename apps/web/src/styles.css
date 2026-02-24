@@ -41,6 +41,7 @@
 html, body, #root {
   margin: 0;
   min-height: 100%;
+  overflow-x: hidden;
 }
 
 body {
@@ -50,6 +51,7 @@ body {
     radial-gradient(circle at 92% 6%, color-mix(in oklab, var(--accent-a) 13%, transparent), transparent 44%),
     var(--bg);
   color: var(--text);
+  width: 100%;
 }
 
 .app-shell {
@@ -57,13 +59,17 @@ body {
   margin: 0 auto;
   padding: clamp(10px, 2.4vw, 26px);
   position: relative;
+  overflow-x: hidden;
 }
 
 .animated-background {
   position: fixed;
-  inset: -25vh -25vw auto -25vw;
+  top: -24vh;
+  left: -8vw;
+  right: -8vw;
   height: 60vh;
   z-index: -1;
+  pointer-events: none;
   background:
     radial-gradient(circle at 8% 18%, color-mix(in oklab, var(--brand-b) 28%, transparent), transparent 55%),
     radial-gradient(circle at 88% 22%, color-mix(in oklab, var(--accent-a) 24%, transparent), transparent 52%),
@@ -112,7 +118,7 @@ body {
 .brand strong { display: block; font-size: clamp(18px, 2.2vw, 22px); }
 .brand p { margin: 0; color: var(--muted); font-size: 12px; }
 
-.nav { display: flex; gap: 12px; justify-content: center; }
+.nav { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; }
 .nav a { color: var(--muted); text-decoration: none; }
 .nav a:hover { color: var(--text); }
 .nav a.active {
@@ -205,7 +211,7 @@ main { margin-top: 14px; display: grid; gap: 14px; }
 .hero {
   position: relative;
   z-index: 5;
-  overflow: visible;
+  overflow-x: hidden;
 }
 
 .reveal-on-scroll {
@@ -233,12 +239,14 @@ main { margin-top: 14px; display: grid; gap: 14px; }
 }
 
 .hero-revolution {
-  overflow: visible;
+  overflow-x: hidden;
 }
 
 .hero-aura {
   position: absolute;
-  inset: -20% -25% auto -20%;
+  top: -20%;
+  left: -10%;
+  right: -10%;
   height: 320px;
   pointer-events: none;
   background:
