@@ -2800,11 +2800,11 @@ function OwnerPage() {
 }
 
 function AdminPanelPage() {
-  const [adminLogin, setAdminLogin] = useState("Kaktyz12");
-  const [adminPassword, setAdminPassword] = useState("DontPussy1221");
+  const [adminLogin, setAdminLogin] = useState("");
+  const [adminPassword, setAdminPassword] = useState("");
   const [adminSession, setAdminSession] = useState(() => localStorage.getItem("vmestoru-admin-session") ?? "");
   const [adminSessionExpiresAt, setAdminSessionExpiresAt] = useState(() => localStorage.getItem("vmestoru-admin-session-expires-at") ?? "");
-  const [moderatorName, setModeratorName] = useState(() => localStorage.getItem("vmestoru-moderator-name") ?? "Admin");
+  const [moderatorName, setModeratorName] = useState(() => localStorage.getItem("vmestoru-moderator-name") ?? "");
   const [tab, setTab] = useState<"overview" | "owners" | "venues" | "requests" | "support" | "reviews">("overview");
   const [overview, setOverview] = useState<AdminOverview | null>(null);
   const [ownersRows, setOwnersRows] = useState<AdminOwnerRow[]>([]);
@@ -3180,11 +3180,11 @@ function AdminPanelPage() {
 }
 
 function AdminReviewsPage() {
-  const [adminLogin, setAdminLogin] = useState("Kaktyz12");
-  const [adminPassword, setAdminPassword] = useState("DontPussy1221");
+  const [adminLogin, setAdminLogin] = useState("");
+  const [adminPassword, setAdminPassword] = useState("");
   const [adminSession, setAdminSession] = useState(() => localStorage.getItem("vmestoru-admin-session") ?? "");
   const [adminSessionExpiresAt, setAdminSessionExpiresAt] = useState(() => localStorage.getItem("vmestoru-admin-session-expires-at") ?? "");
-  const [moderatorName, setModeratorName] = useState(() => localStorage.getItem("vmestoru-moderator-name") ?? "Moderator");
+  const [moderatorName, setModeratorName] = useState(() => localStorage.getItem("vmestoru-moderator-name") ?? "");
   const [status, setStatus] = useState("pending");
   const [riskMin, setRiskMin] = useState("0");
   const [flaggedOnly, setFlaggedOnly] = useState(false);
