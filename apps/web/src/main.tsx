@@ -63,6 +63,54 @@ type AdminReviewSummary = {
     note?: string;
   }>;
 };
+type AdminOverview = {
+  moderator: string;
+  generatedAt: string;
+  totals: {
+    owners: number;
+    venues: number;
+    publishedVenues: number;
+    hiddenVenues: number;
+    leads: number;
+    supportRequests: number;
+    reviews: number;
+    pendingReviews: number;
+  };
+  leads: Record<"new" | "in_progress" | "call_scheduled" | "confirmed" | "rejected", number>;
+  support: Record<"new" | "in_progress" | "resolved" | "rejected", number>;
+};
+type AdminOwnerRow = {
+  id: string;
+  name: string;
+  email: string;
+  createdAt: string;
+  trialStatus: "active" | "expired";
+  trialEndsAt: string;
+  subscriptionStatus: "inactive" | "active";
+  nextBillingDate: string | null;
+  venuesCount: number;
+  leadsCount: number;
+};
+type AdminVenueRow = Venue & {
+  ownerName: string;
+  ownerEmail: string;
+  leadsCount: number;
+};
+type AdminLeadRow = OwnerLead & {
+  ownerId: string;
+  ownerName: string;
+};
+type AdminSupportRow = {
+  id: string;
+  name: string;
+  phone: string;
+  message: string;
+  page: string;
+  status: "new" | "in_progress" | "resolved" | "rejected";
+  createdAt: string;
+  updatedAt: string;
+  assignedTo?: string;
+};
 type Owner = {
   id: string;
   name: string;
@@ -2751,6 +2799,378 @@ function OwnerPage() {
   );
 }
 
+function AdminPanelPage() {
+  const [adminAccessKey, setAdminAccessKey] = useState("");
+  const [adminSession, setAdminSession] = useState(() => localStorage.getItem("vmestoru-admin-session") ?? "");
+  const [adminSessionExpiresAt, setAdminSessionExpiresAt] = useState(() => localStorage.getItem("vmestoru-admin-session-expires-at") ?? "");
+  const [moderatorName, setModeratorName] = useState(() => localStorage.getItem("vmestoru-moderator-name") ?? "Admin");
+  const [tab, setTab] = useState<"overview" | "owners" | "venues" | "requests" | "support" | "reviews">("overview");
+  const [overview, setOverview] = useState<AdminOverview | null>(null);
+  const [ownersRows, setOwnersRows] = useState<AdminOwnerRow[]>([]);
+  const [venueRows, setVenueRows] = useState<AdminVenueRow[]>([]);
+  const [leadRows, setLeadRows] = useState<AdminLeadRow[]>([]);
+  const [supportRows, setSupportRows] = useState<AdminSupportRow[]>([]);
+  const [reviewSummary, setReviewSummary] = useState<AdminReviewSummary | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
+  const [query, setQuery] = useState("");
+
+  useEffect(() => {
+    applySeo({
+      title: "Админка — VmestoRu",
+      description: "Центр управления пользователями, площадками, заявками, поддержкой и модерацией.",
+      path: "/admin",
+      noindex: true,
+    });
+  }, []);
+
+  useEffect(() => {
+    if (!adminSession.trim()) return;
+    void verifySession();
+  }, [adminSession]);
+
+  useEffect(() => {
+    if (!adminSession.trim()) return;
+    void loadAll();
+  }, [adminSession, query]);
+
+  function clearSession(nextError = ""): void {
+    setAdminSession("");
+    setAdminSessionExpiresAt("");
+    localStorage.removeItem("vmestoru-admin-session");
+    localStorage.removeItem("vmestoru-admin-session-expires-at");
+    if (nextError) setError(nextError);
+  }
+
+  async function verifySession(): Promise<void> {
+    try {
+      const response = await fetch(`${API}/api/admin/session`, {
+        headers: { "x-admin-session": adminSession.trim() },
+      });
+      if (!response.ok) {
+        clearSession("Сессия администратора истекла. Войдите снова.");
+        return;
+      }
+      const payload = (await response.json()) as { expiresAt?: string };
+      if (payload.expiresAt) {
+        setAdminSessionExpiresAt(payload.expiresAt);
+        localStorage.setItem("vmestoru-admin-session-expires-at", payload.expiresAt);
+      }
+    } catch {
+      clearSession("Не удалось проверить сессию администратора.");
+    }
+  }
+
+  async function login(event: FormEvent): Promise<void> {
+    event.preventDefault();
+    if (!adminAccessKey.trim()) {
+      setError("Введите ключ доступа администратора.");
+      return;
+    }
+    setError("");
+    try {
+      const response = await fetch(`${API}/api/admin/auth`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ accessKey: adminAccessKey.trim(), moderator: moderatorName.trim() || "Admin" }),
+      });
+      if (!response.ok) {
+        setError(response.status === 403 ? "Неверный ключ доступа." : "Не удалось войти в админку.");
+        return;
+      }
+      const payload = (await response.json()) as { token: string; expiresAt: string };
+      setAdminSession(payload.token);
+      setAdminSessionExpiresAt(payload.expiresAt);
+      localStorage.setItem("vmestoru-admin-session", payload.token);
+      localStorage.setItem("vmestoru-admin-session-expires-at", payload.expiresAt);
+      localStorage.setItem("vmestoru-moderator-name", moderatorName.trim() || "Admin");
+      setAdminAccessKey("");
+      await loadAll(payload.token);
+    } catch {
+      setError("Ошибка сети при входе в админку.");
+    }
+  }
+
+  function sessionHeaders(tokenOverride?: string): Record<string, string> {
+    return { "x-admin-session": (tokenOverride ?? adminSession).trim() };
+  }
+
+  async function loadAll(tokenOverride?: string): Promise<void> {
+    const token = (tokenOverride ?? adminSession).trim();
+    if (!token) return;
+    setLoading(true);
+    setError("");
+    try {
+      const q = query.trim();
+      const qSuffix = q ? `?q=${encodeURIComponent(q)}` : "";
+      const [overviewRes, ownersRes, venuesRes, leadsRes, supportRes, reviewSummaryRes] = await Promise.all([
+        fetch(`${API}/api/admin/overview`, { headers: sessionHeaders(token) }),
+        fetch(`${API}/api/admin/owners${qSuffix}`, { headers: sessionHeaders(token) }),
+        fetch(`${API}/api/admin/venues${qSuffix}`, { headers: sessionHeaders(token) }),
+        fetch(`${API}/api/admin/requests${qSuffix}`, { headers: sessionHeaders(token) }),
+        fetch(`${API}/api/admin/support${qSuffix}`, { headers: sessionHeaders(token) }),
+        fetch(`${API}/api/admin/reviews/summary`, { headers: sessionHeaders(token) }),
+      ]);
+      if ([overviewRes, ownersRes, venuesRes, leadsRes, supportRes, reviewSummaryRes].some((item) => item.status === 403)) {
+        clearSession("Сессия администратора истекла. Войдите снова.");
+        return;
+      }
+      if (!overviewRes.ok || !ownersRes.ok || !venuesRes.ok || !leadsRes.ok || !supportRes.ok || !reviewSummaryRes.ok) {
+        setError("Не удалось загрузить данные админки.");
+        return;
+      }
+      setOverview((await overviewRes.json()) as AdminOverview);
+      setOwnersRows((await ownersRes.json()) as AdminOwnerRow[]);
+      setVenueRows((await venuesRes.json()) as AdminVenueRow[]);
+      setLeadRows((await leadsRes.json()) as AdminLeadRow[]);
+      setSupportRows((await supportRes.json()) as AdminSupportRow[]);
+      setReviewSummary((await reviewSummaryRes.json()) as AdminReviewSummary);
+    } catch {
+      setError("Ошибка сети при загрузке админ-данных.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function updateOwnerAccess(ownerId: string, payload: Partial<Pick<AdminOwnerRow, "trialStatus" | "subscriptionStatus">>): Promise<void> {
+    setNotice("");
+    const response = await fetch(`${API}/api/admin/owners/${encodeURIComponent(ownerId)}/access`, {
+      method: "PATCH",
+      headers: { ...sessionHeaders(), "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    if (!response.ok) {
+      setNotice("Не удалось обновить доступ арендодателя.");
+      return;
+    }
+    setNotice("Доступ арендодателя обновлен.");
+    await loadAll();
+  }
+
+  async function toggleVenuePublication(venueId: string, nextPublished: boolean): Promise<void> {
+    setNotice("");
+    const response = await fetch(`${API}/api/admin/venues/${encodeURIComponent(venueId)}`, {
+      method: "PATCH",
+      headers: { ...sessionHeaders(), "Content-Type": "application/json" },
+      body: JSON.stringify({ isPublished: nextPublished }),
+    });
+    if (!response.ok) {
+      setNotice("Не удалось обновить публикацию площадки.");
+      return;
+    }
+    setNotice(nextPublished ? "Площадка опубликована." : "Площадка скрыта.");
+    await loadAll();
+  }
+
+  async function removeVenueByAdmin(venueId: string): Promise<void> {
+    setNotice("");
+    const response = await fetch(`${API}/api/admin/venues/${encodeURIComponent(venueId)}`, {
+      method: "DELETE",
+      headers: sessionHeaders(),
+    });
+    if (!response.ok) {
+      setNotice("Не удалось удалить площадку.");
+      return;
+    }
+    setNotice("Площадка удалена администратором.");
+    await loadAll();
+  }
+
+  async function updateRequestStatus(requestId: string, status: AdminLeadRow["status"]): Promise<void> {
+    setNotice("");
+    const response = await fetch(`${API}/api/admin/requests/${encodeURIComponent(requestId)}/status`, {
+      method: "PATCH",
+      headers: { ...sessionHeaders(), "Content-Type": "application/json" },
+      body: JSON.stringify({ status }),
+    });
+    if (!response.ok) {
+      setNotice("Не удалось обновить статус заявки.");
+      return;
+    }
+    setNotice("Статус заявки обновлен.");
+    await loadAll();
+  }
+
+  async function updateSupportStatus(requestId: string, status: AdminSupportRow["status"]): Promise<void> {
+    setNotice("");
+    const response = await fetch(`${API}/api/admin/support/${encodeURIComponent(requestId)}`, {
+      method: "PATCH",
+      headers: { ...sessionHeaders(), "Content-Type": "application/json" },
+      body: JSON.stringify({ status }),
+    });
+    if (!response.ok) {
+      setNotice("Не удалось обновить статус обращения.");
+      return;
+    }
+    setNotice("Статус обращения обновлен.");
+    await loadAll();
+  }
+
+  if (!adminSession.trim()) {
+    return (
+      <section className="section glass reveal-on-scroll">
+        <Breadcrumbs items={[{ label: "Главная", to: "/" }, { label: "Админка" }]} />
+        <h1>Админка</h1>
+        <p className="muted">Единый центр управления пользователями, площадками, заявками и поддержкой.</p>
+        <form className="admin-key-form" onSubmit={login}>
+          <label className="filter-item">
+            <span>Ключ доступа</span>
+            <input value={adminAccessKey} onChange={(e) => setAdminAccessKey(e.target.value)} placeholder="Введите admin key" />
+          </label>
+          <label className="filter-item">
+            <span>Имя администратора</span>
+            <input value={moderatorName} onChange={(e) => setModeratorName(e.target.value)} />
+          </label>
+          <button type="submit" className="primary">Войти</button>
+        </form>
+        {error ? <p className="error-note">{error}</p> : null}
+      </section>
+    );
+  }
+
+  return (
+    <section className="section glass reveal-on-scroll admin-page">
+      <Breadcrumbs items={[{ label: "Главная", to: "/" }, { label: "Админка" }]} />
+      <div className="row-between">
+        <h1>Админка</h1>
+        <div className="admin-session-meta">
+          <span className="muted">Сессия до {adminSessionExpiresAt ? new Date(adminSessionExpiresAt).toLocaleString("ru-RU") : "-"}</span>
+          <button type="button" className="ghost-btn" onClick={() => clearSession()}>Выйти</button>
+        </div>
+      </div>
+      <div className="admin-topbar">
+        <input
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder="Поиск по админке: пользователь, площадка, заявка, обращение"
+        />
+        <button type="button" className="chip" onClick={() => void loadAll()}>Обновить</button>
+      </div>
+      <div className="tabs admin-tabs">
+        <button type="button" className={tab === "overview" ? "tab active" : "tab"} onClick={() => setTab("overview")}>Обзор</button>
+        <button type="button" className={tab === "owners" ? "tab active" : "tab"} onClick={() => setTab("owners")}>Пользователи</button>
+        <button type="button" className={tab === "venues" ? "tab active" : "tab"} onClick={() => setTab("venues")}>Площадки</button>
+        <button type="button" className={tab === "requests" ? "tab active" : "tab"} onClick={() => setTab("requests")}>Заявки</button>
+        <button type="button" className={tab === "support" ? "tab active" : "tab"} onClick={() => setTab("support")}>Поддержка</button>
+        <button type="button" className={tab === "reviews" ? "tab active" : "tab"} onClick={() => setTab("reviews")}>Модерация</button>
+      </div>
+      {loading ? <p className="muted">Загрузка админ-панели...</p> : null}
+      {error ? <p className="error-note">{error}</p> : null}
+      {notice ? <p className="ok">{notice}</p> : null}
+
+      {tab === "overview" && overview ? (
+        <section className="admin-grid">
+          <article className="metric-card"><p>Пользователи</p><strong>{overview.totals.owners}</strong></article>
+          <article className="metric-card"><p>Площадки (публичные)</p><strong>{overview.totals.publishedVenues}</strong></article>
+          <article className="metric-card"><p>Площадки (скрытые)</p><strong>{overview.totals.hiddenVenues}</strong></article>
+          <article className="metric-card"><p>Заявки</p><strong>{overview.totals.leads}</strong></article>
+          <article className="metric-card"><p>Поддержка</p><strong>{overview.totals.supportRequests}</strong></article>
+          <article className="metric-card"><p>Отзывы pending</p><strong>{overview.totals.pendingReviews}</strong></article>
+        </section>
+      ) : null}
+
+      {tab === "owners" ? (
+        <div className="admin-list">
+          {ownersRows.map((owner) => (
+            <article key={owner.id} className="admin-card">
+              <div className="row-between">
+                <strong>{owner.name}</strong>
+                <span className="muted">{owner.email}</span>
+              </div>
+              <p className="muted">Площадок: {owner.venuesCount} · Заявок: {owner.leadsCount}</p>
+              <p>Trial: {owner.trialStatus} · Subscription: {owner.subscriptionStatus}</p>
+              <div className="status-actions">
+                <button type="button" className="chip" onClick={() => void updateOwnerAccess(owner.id, { trialStatus: "active" })}>Trial active</button>
+                <button type="button" className="chip" onClick={() => void updateOwnerAccess(owner.id, { trialStatus: "expired" })}>Trial expired</button>
+                <button type="button" className="chip" onClick={() => void updateOwnerAccess(owner.id, { subscriptionStatus: "active" })}>Sub active</button>
+                <button type="button" className="chip" onClick={() => void updateOwnerAccess(owner.id, { subscriptionStatus: "inactive" })}>Sub inactive</button>
+              </div>
+            </article>
+          ))}
+          {ownersRows.length === 0 ? <p className="muted">Пользователи не найдены.</p> : null}
+        </div>
+      ) : null}
+
+      {tab === "venues" ? (
+        <div className="admin-list">
+          {venueRows.map((venue) => (
+            <article key={venue.id} className="admin-card">
+              <div className="row-between">
+                <strong>{venue.title}</strong>
+                <span className={venue.isPublished === false ? "chip" : "chip active"}>{venue.isPublished === false ? "Скрыта" : "Опубликована"}</span>
+              </div>
+              <p className="muted">{venue.category} · {venue.region} · {venue.ownerName}</p>
+              <p className="muted">Заявок: {venue.leadsCount} · {venue.areaSqm} м2 · {venue.capacity} гостей</p>
+              <div className="status-actions">
+                <button type="button" className="chip" onClick={() => void toggleVenuePublication(venue.id, venue.isPublished === false)}>
+                  {venue.isPublished === false ? "Опубликовать" : "Скрыть"}
+                </button>
+                <button type="button" className="ghost-btn" onClick={() => void removeVenueByAdmin(venue.id)}>Удалить</button>
+              </div>
+            </article>
+          ))}
+          {venueRows.length === 0 ? <p className="muted">Площадки не найдены.</p> : null}
+        </div>
+      ) : null}
+
+      {tab === "requests" ? (
+        <div className="admin-list">
+          {leadRows.map((request) => (
+            <article key={request.id} className="admin-card">
+              <div className="row-between">
+                <strong>{request.name} · {request.phone}</strong>
+                <span className="chip">{request.status}</span>
+              </div>
+              <p className="muted">{request.venueTitle} · {request.ownerName}</p>
+              {request.comment ? <p>{request.comment}</p> : null}
+              <div className="status-actions">
+                <button type="button" className="chip" onClick={() => void updateRequestStatus(request.id, "in_progress")}>В работу</button>
+                <button type="button" className="chip" onClick={() => void updateRequestStatus(request.id, "call_scheduled")}>Созвон</button>
+                <button type="button" className="chip" onClick={() => void updateRequestStatus(request.id, "confirmed")}>Подтвердить</button>
+                <button type="button" className="chip" onClick={() => void updateRequestStatus(request.id, "rejected")}>Отклонить</button>
+              </div>
+            </article>
+          ))}
+          {leadRows.length === 0 ? <p className="muted">Заявки не найдены.</p> : null}
+        </div>
+      ) : null}
+
+      {tab === "support" ? (
+        <div className="admin-list">
+          {supportRows.map((request) => (
+            <article key={request.id} className="admin-card">
+              <div className="row-between">
+                <strong>{request.name} · {request.phone}</strong>
+                <span className="chip">{request.status}</span>
+              </div>
+              <p className="muted">Страница: {request.page}</p>
+              <p>{request.message}</p>
+              <div className="status-actions">
+                <button type="button" className="chip" onClick={() => void updateSupportStatus(request.id, "in_progress")}>В работе</button>
+                <button type="button" className="chip" onClick={() => void updateSupportStatus(request.id, "resolved")}>Решено</button>
+                <button type="button" className="chip" onClick={() => void updateSupportStatus(request.id, "rejected")}>Отклонено</button>
+              </div>
+            </article>
+          ))}
+          {supportRows.length === 0 ? <p className="muted">Обращения не найдены.</p> : null}
+        </div>
+      ) : null}
+
+      {tab === "reviews" ? (
+        <div className="admin-list">
+          <article className="admin-card">
+            <h3>Модерация отзывов</h3>
+            <p className="muted">Pending: {reviewSummary?.pending ?? 0} · High-risk: {reviewSummary?.highRiskPending ?? 0}</p>
+            <p className="muted">Рекомендуем назначить 1-2 ответственных модератора с ежедневной проверкой очереди.</p>
+            <Link to="/admin/reviews" className="primary">Открыть модерацию отзывов</Link>
+          </article>
+        </div>
+      ) : null}
+    </section>
+  );
+}
+
 function AdminReviewsPage() {
   const [adminAccessKey, setAdminAccessKey] = useState("");
   const [adminSession, setAdminSession] = useState(() => localStorage.getItem("vmestoru-admin-session") ?? "");
@@ -3461,6 +3881,7 @@ function AppContent({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: () 
           <Route path="/category/:slug" element={<CategoryPage />} />
           <Route path="/venue/:id" element={<VenuePage />} />
           <Route path="/owner" element={<OwnerPage />} />
+          <Route path="/admin" element={<AdminPanelPage />} />
           <Route path="/admin/reviews" element={<AdminReviewsPage />} />
           <Route path="/privacy" element={<PrivacyPage />} />
           <Route path="*" element={<NotFoundPage />} />

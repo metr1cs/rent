@@ -3,7 +3,7 @@ import crypto from "node:crypto";
 import cors from "cors";
 import express, { type Request, type Response } from "express";
 import { z } from "zod";
-import { analyticsEvents, categories, leadRequests, owners, payments, recalculateVenueRating, reviewModerationAudit, reviews, venues } from "./data.js";
+import { analyticsEvents, categories, leadRequests, owners, payments, recalculateVenueRating, reviewModerationAudit, reviews, supportRequests, venues } from "./data.js";
 import { initDataStore, persistStateSync } from "./persistence.js";
 
 const app = express();
@@ -108,6 +108,22 @@ function normalizeVenueArea(): void {
 }
 
 normalizeVenueArea();
+
+function normalizeVenuePublication(): void {
+  let updated = false;
+  venues.forEach((venue) => {
+    if (typeof venue.isPublished === "boolean") return;
+    venue.isPublished = true;
+    updated = true;
+  });
+  if (updated) persistStateSync();
+}
+
+normalizeVenuePublication();
+
+function isVenuePublished(venue: { isPublished?: boolean }): boolean {
+  return venue.isPublished !== false;
+}
 
 function requireAdmin(req: Request, res: Response): string | null {
   const sessionToken = String(req.headers["x-admin-session"] ?? "");
@@ -447,7 +463,7 @@ app.get("/api/home/featured-categories", (_req, res) => {
     .map((category) => ({
       ...category,
       venues: venues
-        .filter((venue) => venue.category === category.name)
+        .filter((venue) => venue.category === category.name && isVenuePublished(venue))
         .sort((a, b) => b.rating - a.rating)
         .slice(0, 8)
     }));
@@ -478,6 +494,7 @@ app.get("/api/venues", (req, res) => {
   const { q, category, region, date, capacity, areaMin, sort, parking, stage, late, instant } = parsed.data;
 
   const filtered = venues.filter((venue) => {
+    const publishedPass = isVenuePublished(venue);
     const qPass = q
       ? `${venue.title} ${venue.description} ${venue.category}`.toLowerCase().includes(q.toLowerCase())
       : true;
@@ -491,7 +508,7 @@ app.get("/api/venues", (req, res) => {
     const latePass = late ? venue.cancellationPolicy.toLowerCase().includes("72") : true;
     const instantPass = instant ? venue.instantBooking : true;
 
-    return qPass && categoryPass && regionPass && datePass && capacityPass && areaPass && parkingPass && stagePass && latePass && instantPass;
+    return publishedPass && qPass && categoryPass && regionPass && datePass && capacityPass && areaPass && parkingPass && stagePass && latePass && instantPass;
   });
 
   const sorted = [...filtered];
@@ -506,6 +523,7 @@ app.get("/api/venues", (req, res) => {
 app.get("/api/venues/:id", (req, res) => {
   const venue = venues.find((item) => item.id === req.params.id);
   if (!venue) return res.status(404).json({ message: "Venue not found" });
+  if (!isVenuePublished(venue)) return res.status(404).json({ message: "Venue not found" });
   trackEvent("venue_view", { venueId: venue.id, region: venue.region, category: venue.category });
   return res.json(venue);
 });
@@ -515,7 +533,7 @@ app.get("/api/venues/:id/similar", (req, res) => {
   if (!venue) return res.status(404).json({ message: "Venue not found" });
 
   const similar = venues
-    .filter((item) => item.id !== venue.id)
+    .filter((item) => item.id !== venue.id && isVenuePublished(item))
     .map((item) => {
       let score = 0;
       if (item.category === venue.category) score += 3;
@@ -774,6 +792,19 @@ app.post("/api/support/requests", (req, res) => {
   }
 
   const createdAt = new Date().toISOString();
+  const created = {
+    id: `SR-${supportRequests.length + 1}`,
+    name: parsed.data.name,
+    phone: parsed.data.phone,
+    message: normalizedMessage,
+    page: parsed.data.page || "-",
+    status: "new" as const,
+    createdAt,
+    updatedAt: createdAt
+  };
+  supportRequests.push(created);
+  persistStateSync();
+
   void sendTelegramNotification(
     [
       "Новый запрос в поддержку",
@@ -787,7 +818,7 @@ app.post("/api/support/requests", (req, res) => {
   );
 
   monitoringState.support.success += 1;
-  return res.status(201).json({ message: "Запрос отправлен в поддержку. Мы свяжемся с вами в ближайшее время." });
+  return res.status(201).json({ message: "Запрос отправлен в поддержку. Мы свяжемся с вами в ближайшее время.", requestId: created.id });
 });
 
 app.post("/api/venues/:id/requests", (req, res) => {
@@ -1178,6 +1209,231 @@ app.post("/api/admin/billing/reminders/run", (req, res) => {
   });
 });
 
+app.get("/api/admin/overview", (req, res) => {
+  const moderator = requireAdmin(req, res);
+  if (!moderator) return;
+
+  const publishedVenues = venues.filter((item) => isVenuePublished(item)).length;
+  const leadByStatus = {
+    new: leadRequests.filter((item) => item.status === "new").length,
+    in_progress: leadRequests.filter((item) => item.status === "in_progress").length,
+    call_scheduled: leadRequests.filter((item) => item.status === "call_scheduled").length,
+    confirmed: leadRequests.filter((item) => item.status === "confirmed").length,
+    rejected: leadRequests.filter((item) => item.status === "rejected").length,
+  };
+  const supportByStatus = {
+    new: supportRequests.filter((item) => item.status === "new").length,
+    in_progress: supportRequests.filter((item) => item.status === "in_progress").length,
+    resolved: supportRequests.filter((item) => item.status === "resolved").length,
+    rejected: supportRequests.filter((item) => item.status === "rejected").length,
+  };
+
+  return res.json({
+    moderator,
+    generatedAt: new Date().toISOString(),
+    totals: {
+      owners: owners.length,
+      venues: venues.length,
+      publishedVenues,
+      hiddenVenues: venues.length - publishedVenues,
+      leads: leadRequests.length,
+      supportRequests: supportRequests.length,
+      reviews: reviews.length,
+      pendingReviews: reviews.filter((item) => item.status === "pending").length,
+    },
+    leads: leadByStatus,
+    support: supportByStatus,
+  });
+});
+
+app.get("/api/admin/owners", (req, res) => {
+  const moderator = requireAdmin(req, res);
+  if (!moderator) return;
+
+  const q = String(req.query.q ?? "").trim().toLowerCase();
+  const payload = owners
+    .map((owner) => ({
+      id: owner.id,
+      name: owner.name,
+      email: owner.email,
+      createdAt: owner.createdAt,
+      trialStatus: owner.trialStatus,
+      trialEndsAt: owner.trialEndsAt,
+      subscriptionStatus: owner.subscriptionStatus,
+      nextBillingDate: owner.nextBillingDate,
+      venuesCount: venues.filter((venue) => venue.ownerId === owner.id).length,
+      leadsCount: leadRequests.filter((lead) => venues.some((venue) => venue.id === lead.venueId && venue.ownerId === owner.id)).length,
+    }))
+    .filter((owner) => (q ? `${owner.name} ${owner.email}`.toLowerCase().includes(q) : true))
+    .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+
+  return res.json(payload);
+});
+
+const adminOwnerAccessSchema = z.object({
+  trialStatus: z.enum(["active", "expired"]).optional(),
+  subscriptionStatus: z.enum(["inactive", "active"]).optional(),
+});
+
+app.patch("/api/admin/owners/:id/access", (req, res) => {
+  const moderator = requireAdmin(req, res);
+  if (!moderator) return;
+  const parsed = adminOwnerAccessSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ message: "Invalid payload" });
+
+  const owner = owners.find((item) => item.id === req.params.id);
+  if (!owner) return res.status(404).json({ message: "Owner not found" });
+  if (parsed.data.trialStatus) owner.trialStatus = parsed.data.trialStatus;
+  if (parsed.data.subscriptionStatus) owner.subscriptionStatus = parsed.data.subscriptionStatus;
+  persistStateSync();
+  return res.json({ message: "Доступ арендодателя обновлен", ownerId: owner.id });
+});
+
+app.get("/api/admin/venues", (req, res) => {
+  const moderator = requireAdmin(req, res);
+  if (!moderator) return;
+
+  const q = String(req.query.q ?? "").trim().toLowerCase();
+  const category = String(req.query.category ?? "");
+  const region = String(req.query.region ?? "");
+  const published = String(req.query.published ?? "");
+
+  const payload = venues
+    .map((venue) => {
+      const owner = owners.find((item) => item.id === venue.ownerId);
+      return {
+        ...venue,
+        ownerName: owner?.name ?? "unknown",
+        ownerEmail: owner?.email ?? "unknown",
+        leadsCount: leadRequests.filter((item) => item.venueId === venue.id).length,
+      };
+    })
+    .filter((venue) => (q ? `${venue.title} ${venue.address} ${venue.ownerName}`.toLowerCase().includes(q) : true))
+    .filter((venue) => (category ? venue.category === category : true))
+    .filter((venue) => (region ? venue.region === region : true))
+    .filter((venue) => {
+      if (published === "true") return isVenuePublished(venue);
+      if (published === "false") return !isVenuePublished(venue);
+      return true;
+    })
+    .sort((a, b) => b.id.localeCompare(a.id));
+
+  return res.json(payload);
+});
+
+const adminVenuePatchSchema = z.object({
+  isPublished: z.boolean().optional(),
+});
+
+app.patch("/api/admin/venues/:id", (req, res) => {
+  const moderator = requireAdmin(req, res);
+  if (!moderator) return;
+  const parsed = adminVenuePatchSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ message: "Invalid payload" });
+
+  const venue = venues.find((item) => item.id === req.params.id);
+  if (!venue) return res.status(404).json({ message: "Venue not found" });
+
+  if (typeof parsed.data.isPublished === "boolean") venue.isPublished = parsed.data.isPublished;
+  persistStateSync();
+  return res.json({ message: "Площадка обновлена", venueId: venue.id, isPublished: venue.isPublished !== false });
+});
+
+app.delete("/api/admin/venues/:id", (req, res) => {
+  const moderator = requireAdmin(req, res);
+  if (!moderator) return;
+
+  const venueIndex = venues.findIndex((item) => item.id === req.params.id);
+  if (venueIndex < 0) return res.status(404).json({ message: "Venue not found" });
+
+  venues.splice(venueIndex, 1);
+  for (let i = reviews.length - 1; i >= 0; i -= 1) if (reviews[i].venueId === req.params.id) reviews.splice(i, 1);
+  for (let i = leadRequests.length - 1; i >= 0; i -= 1) if (leadRequests[i].venueId === req.params.id) leadRequests.splice(i, 1);
+  for (let i = reviewModerationAudit.length - 1; i >= 0; i -= 1) if (reviewModerationAudit[i].venueId === req.params.id) reviewModerationAudit.splice(i, 1);
+  persistStateSync();
+  return res.json({ message: "Площадка удалена администратором" });
+});
+
+app.get("/api/admin/requests", (req, res) => {
+  const moderator = requireAdmin(req, res);
+  if (!moderator) return;
+
+  const status = String(req.query.status ?? "");
+  const q = String(req.query.q ?? "").trim().toLowerCase();
+
+  const payload = leadRequests
+    .map((request) => {
+      const venue = venues.find((item) => item.id === request.venueId);
+      const owner = venue ? owners.find((item) => item.id === venue.ownerId) : null;
+      return {
+        ...request,
+        venueTitle: venue?.title ?? "Удаленная площадка",
+        venueAddress: venue?.address ?? "-",
+        ownerId: venue?.ownerId ?? "-",
+        ownerName: owner?.name ?? "-",
+      };
+    })
+    .filter((item) => (status ? item.status === status : true))
+    .filter((item) => (q ? `${item.name} ${item.phone} ${item.venueTitle} ${item.ownerName}`.toLowerCase().includes(q) : true))
+    .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+
+  return res.json(payload);
+});
+
+const adminRequestStatusSchema = z.object({
+  status: z.enum(["new", "in_progress", "call_scheduled", "confirmed", "rejected"]),
+});
+
+app.patch("/api/admin/requests/:id/status", (req, res) => {
+  const moderator = requireAdmin(req, res);
+  if (!moderator) return;
+  const parsed = adminRequestStatusSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ message: "Invalid payload" });
+
+  const request = leadRequests.find((item) => item.id === req.params.id);
+  if (!request) return res.status(404).json({ message: "Request not found" });
+  request.status = parsed.data.status;
+  request.updatedAt = new Date().toISOString();
+  persistStateSync();
+  return res.json({ message: "Статус заявки обновлен", request });
+});
+
+app.get("/api/admin/support", (req, res) => {
+  const moderator = requireAdmin(req, res);
+  if (!moderator) return;
+
+  const status = String(req.query.status ?? "");
+  const q = String(req.query.q ?? "").trim().toLowerCase();
+
+  const payload = supportRequests
+    .filter((item) => (status ? item.status === status : true))
+    .filter((item) => (q ? `${item.name} ${item.phone} ${item.message} ${item.page}`.toLowerCase().includes(q) : true))
+    .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+
+  return res.json(payload);
+});
+
+const adminSupportPatchSchema = z.object({
+  status: z.enum(["new", "in_progress", "resolved", "rejected"]).optional(),
+  assignedTo: z.string().min(1).max(120).optional(),
+});
+
+app.patch("/api/admin/support/:id", (req, res) => {
+  const moderator = requireAdmin(req, res);
+  if (!moderator) return;
+  const parsed = adminSupportPatchSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ message: "Invalid payload" });
+
+  const request = supportRequests.find((item) => item.id === req.params.id);
+  if (!request) return res.status(404).json({ message: "Support request not found" });
+
+  if (parsed.data.status) request.status = parsed.data.status;
+  if (parsed.data.assignedTo) request.assignedTo = parsed.data.assignedTo;
+  request.updatedAt = new Date().toISOString();
+  persistStateSync();
+  return res.json({ message: "Обращение поддержки обновлено", request });
+});
+
 app.post("/api/owner/venues", (req, res) => {
   const parsed = ownerVenueSchema.safeParse(req.body);
   if (!parsed.success) {
@@ -1222,6 +1478,7 @@ app.post("/api/owner/venues", (req, res) => {
     nextAvailableDates: [new Date(Date.now() + 86400000).toISOString().slice(0, 10)],
     rating: 0,
     reviewsCount: 0,
+    isPublished: true,
     instantBooking: false,
     metroMinutes: 10,
     cancellationPolicy: "Бесплатная отмена за 48 часов",

@@ -25,6 +25,7 @@ export type Venue = {
   metroMinutes: number;
   cancellationPolicy: string;
   phone: string;
+  isPublished?: boolean;
 };
 
 export type Review = {
@@ -93,6 +94,18 @@ export type AnalyticsEvent = {
   meta: Record<string, string | number | boolean>;
 };
 
+export type SupportRequest = {
+  id: string;
+  name: string;
+  phone: string;
+  message: string;
+  page: string;
+  status: "new" | "in_progress" | "resolved" | "rejected";
+  createdAt: string;
+  updatedAt: string;
+  assignedTo?: string;
+};
+
 export type ReviewModerationAudit = {
   id: string;
   reviewId: string;
@@ -144,6 +157,8 @@ export const owners: Owner[] = [];
 export const payments: Payment[] = [];
 
 export const analyticsEvents: AnalyticsEvent[] = [];
+
+export const supportRequests: SupportRequest[] = [];
 
 export const reviewModerationAudit: ReviewModerationAudit[] = [];
 

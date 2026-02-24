@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { analyticsEvents, leadRequests, owners, payments, reviewModerationAudit, reviews, venues } from "./data.js";
+import { analyticsEvents, leadRequests, owners, payments, reviewModerationAudit, reviews, supportRequests, venues } from "./data.js";
 
 type PersistedState = {
   venues: typeof venues;
@@ -11,6 +11,7 @@ type PersistedState = {
   payments: typeof payments;
   analyticsEvents: typeof analyticsEvents;
   reviewModerationAudit: typeof reviewModerationAudit;
+  supportRequests: typeof supportRequests;
 };
 
 const __filename = fileURLToPath(import.meta.url);
@@ -26,7 +27,8 @@ function snapshotState(): PersistedState {
     owners,
     payments,
     analyticsEvents,
-    reviewModerationAudit
+    reviewModerationAudit,
+    supportRequests
   };
 }
 
@@ -51,6 +53,7 @@ export function initDataStore(): void {
     if (Array.isArray(parsed.payments)) replaceArray(payments, parsed.payments);
     if (Array.isArray(parsed.analyticsEvents)) replaceArray(analyticsEvents, parsed.analyticsEvents);
     if (Array.isArray(parsed.reviewModerationAudit)) replaceArray(reviewModerationAudit, parsed.reviewModerationAudit);
+    if (Array.isArray(parsed.supportRequests)) replaceArray(supportRequests, parsed.supportRequests);
   } catch (error) {
     console.error("Failed to load data store, using in-memory seed:", error);
   }
