@@ -1,156 +1,71 @@
 # VmestoRu Platform
 
-Новый проект с чистого листа:
-- `apps/web`: premium-сайт аренды площадок для мероприятий
-- `apps/api-laravel`: новый API на Laravel + MySQL (основной)
-- `apps/api`: legacy API на Node.js (оставлен временно для миграции)
-- `ai_team`: система AI-агентов и автообучения (оркестратор, scorer, playbooks)
+Монорепозиторий проекта аренды площадок `vmestoru.ru`.
 
-## Основная логика продукта
-- На главной: 8 популярных категорий, в каждой 10-15 вариантов
-- Пользовательский поток: поиск -> карточка площадки (отдельная страница) -> телефон/заявка
-- Поток арендодателя: регистрация -> оплата подписки (mock 2000 RUB) -> добавление нескольких площадок
-- Поддержка светлой/темной темы, анимаций и AI-поиска
+## Что в репозитории
+- `apps/web` — frontend (React + Vite)
+- `apps/api-laravel` — основной backend (Laravel + MySQL)
+- `apps/api` — legacy backend (Node.js, временный)
+- `docs` — регламенты, SEO, релизные чеклисты, безопасность, аналитика
 
-## Запуск API/Web (Laravel)
+## Полные инструкции
+- Полный гайд по установке/запуску/тестам/деплою: [docs/FULL_SETUP_GUIDE.md](docs/FULL_SETUP_GUIDE.md)
+- Подключение оплаты (текущий mock + production-переход): [docs/PAYMENTS_INTEGRATION.md](docs/PAYMENTS_INTEGRATION.md)
+
+## Быстрый старт (локально)
 ```bash
+cd "/Users/arec/var/www/New project"
 npm install
+
 cd apps/api-laravel
 cp .env.example .env
-# укажите DB_* и ADMIN_PANEL_LOGIN/ADMIN_PANEL_PASSWORD
 php artisan key:generate
 php artisan migrate --seed
-php artisan serve --host 0.0.0.0 --port 8090
 
-# в отдельном терминале
-cd /path/to/repo
+cd /Users/arec/var/www/New\ project/apps/web
+cp .env.example .env
+```
+
+Запуск:
+```bash
+cd "/Users/arec/var/www/New project"
 npm run dev:api
+# новый терминал
 npm run dev:web
 ```
 
-Локальный прогон автопроверок:
+Проверки:
+- API: `http://localhost:8090/health`
+- Web: `http://localhost:5173`
+
+## Production preview
 ```bash
+cd "/Users/arec/var/www/New project"
+npm run build
+cd apps/web
+npm run start
+```
+Откроется на `http://localhost:4173`.
+
+## Тесты
+```bash
+cd "/Users/arec/var/www/New project"
 npm run test:api:laravel
+npm run smoke:all
+npm run e2e:critical
 npm run qa:cycle
 ```
 
-## Telegram-уведомления на телефон
-API умеет отправлять уведомления в Telegram при:
-- новой регистрации арендодателя
-- новой заявке на площадку
+## Деплой
+- Workflow: `.github/workflows/deploy.yml`
+- Триггеры: tag `v*` или ручной `workflow_dispatch`
+- GitHub Secrets: `DEPLOY_HOST`, `DEPLOY_PORT`, `DEPLOY_USER`, `DEPLOY_SSH_KEY`
 
-Переменные окружения для API:
-- `TELEGRAM_BOT_TOKEN`
-- `TELEGRAM_CHAT_ID`
-- `SUPPORT_TELEGRAM_CHAT_ID` (опционально, отдельный чат/группа для поддержки)
-- `ADMIN_NOTIFY_KEY` (для защищенного тестового endpoint)
-
-Пример файла: `apps/api/.env.example`
-
-Тест отправки уведомления:
-```bash
-curl -X POST http://localhost:8090/api/admin/notify/test -H "x-admin-key: YOUR_ADMIN_NOTIFY_KEY"
-```
-
-### Админ-отчет по оплатам и должникам
-```bash
-curl http://localhost:8090/api/admin/billing/overview -H "x-admin-key: YOUR_ADMIN_NOTIFY_KEY"
-```
-
-### Рассылка уведомлений по должникам в Telegram
-```bash
-curl -X POST http://localhost:8090/api/admin/billing/notify-debtors -H "x-admin-key: YOUR_ADMIN_NOTIFY_KEY"
-```
-
-### Прогон напоминаний (3 дня / 1 день / должники)
-```bash
-curl -X POST http://localhost:8090/api/admin/billing/reminders/run -H "x-admin-key: YOUR_ADMIN_NOTIFY_KEY"
-```
-
-### Аналитика воронки (admin)
-```bash
-curl http://localhost:8090/api/admin/analytics/funnel -H "x-admin-key: YOUR_ADMIN_NOTIFY_KEY"
-```
-
-### Операционная готовность (admin)
-```bash
-curl http://localhost:8090/api/admin/ops/readiness -H "x-admin-key: YOUR_ADMIN_NOTIFY_KEY"
-```
-
-### Отзывы: anti-fraud и модерация (admin)
-- Публичный endpoint отзывов возвращает только `published` отзывы.
-- Создать отзыв можно только после подтвержденной заявки на площадку.
-- Подозрительные отзывы уходят в `pending`.
-- Действия модератора пишутся в аудит-лог.
-
-Просмотр очереди модерации:
-```bash
-curl "http://localhost:8090/api/admin/reviews?status=pending" -H "x-admin-key: YOUR_ADMIN_NOTIFY_KEY"
-```
-
-Модерация:
-```bash
-curl -X POST "http://localhost:8090/api/admin/reviews/R-3/moderate" \
-  -H "x-admin-key: YOUR_ADMIN_NOTIFY_KEY" \
-  -H "Content-Type: application/json" \
-  -d '{"status":"published","note":"manual check ok","moderator":"QA Lead"}'
-```
-
-Сводка модерации (pending/high-risk/recent actions):
-```bash
-curl "http://localhost:8090/api/admin/reviews/summary" -H "x-admin-key: YOUR_ADMIN_NOTIFY_KEY"
-```
-
-## Build
-```bash
-npm run build
-```
-
-## Engineering Process
-- Playbook: `docs/ENGINEERING_PLAYBOOK.md`
-- Release checklist: `docs/RELEASE_CHECKLIST.md`
-- PR template: `.github/pull_request_template.md`
-- Production deploy workflow: `.github/workflows/deploy.yml`
-- SEO strategy/forecast: `docs/SEO_STRATEGY_2026_Q2.md`
-- Observability alerts: `docs/OBSERVABILITY_ALERTS.md`
-- Anti-fraud deploy checklist: `docs/ANTIFRAUD_DEPLOY_CHECKLIST.md`
-- Moderation SLA: `docs/ADMIN_MODERATION_SLA.md`
-- Legal public pack: `docs/LEGAL_PUBLIC_PACK.md`
-
-## Хранение данных API (персистентность)
-- API сохраняет runtime-данные в JSON-файл между рестартами.
-- По умолчанию файл: `apps/api/data/store.json`
-- Можно переопределить путь:
-```bash
-DATA_STORE_FILE=/absolute/path/to/store.json npm run start -w apps/api
-```
-
-## Smoke checks
-```bash
-npm run smoke:catalog
-npm run smoke:trust
-```
-
-## Critical E2E
-```bash
-npm run e2e:critical
-```
-
-## Поддержка и управление площадками
-- Поддержка из сайта отправляется в Telegram через `POST /api/support/requests`.
-- Удаление площадки арендодателем: `DELETE /api/owner/venues/:id` (с `ownerId` в body).
-
-## AI Team demo
-```bash
-python3 run_demo.py
-python3 run_autotrain.py
-python3 run_interaction_audit.py
-```
-
-## AI-команда (расширенная)
-- `TechLead/PM/Design/Frontend/Backend/QA/DevOps/Security/Growth/Analytics/Support/Decision`
-- `SREAgent`: надежность, мониторинг, runbooks
-- `QAAutomationAgent`: автоматизация регрессий и smoke-gates
-- `ProductAnalystAgent`: воронка, KPI, growth-гипотезы
-- `LegalComplianceAgent`: legal/compliance и риски данных
-- `CRMRetentionAgent`: сценарии удержания, напоминания, dunning-flow
+## Сопутствующие документы
+- [docs/ENGINEERING_PLAYBOOK.md](docs/ENGINEERING_PLAYBOOK.md)
+- [docs/RELEASE_CHECKLIST.md](docs/RELEASE_CHECKLIST.md)
+- [docs/SEO_STRATEGY_2026_Q2.md](docs/SEO_STRATEGY_2026_Q2.md)
+- [docs/OBSERVABILITY_ALERTS.md](docs/OBSERVABILITY_ALERTS.md)
+- [docs/ANTIFRAUD_DEPLOY_CHECKLIST.md](docs/ANTIFRAUD_DEPLOY_CHECKLIST.md)
+- [docs/ADMIN_MODERATION_SLA.md](docs/ADMIN_MODERATION_SLA.md)
+- [docs/LEGAL_PUBLIC_PACK.md](docs/LEGAL_PUBLIC_PACK.md)

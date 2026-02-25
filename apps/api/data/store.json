@@ -1,9 +1,217 @@
 {
-  "venues": [],
-  "reviews": [],
-  "leadRequests": [],
-  "owners": [],
-  "payments": [],
-  "analyticsEvents": [],
-  "reviewModerationAudit": []
+  "venues": [
+    {
+      "id": "V-OWN-1",
+      "ownerId": "O-1",
+      "title": "Smoke Venue Catalog",
+      "region": "Республика Коми",
+      "city": "Ухта",
+      "address": "Ухта, ул. Тестовая, 1",
+      "category": "Лофт",
+      "capacity": 80,
+      "pricePerHour": 5000,
+      "description": "Smoke venue for catalog flow in empty data store",
+      "amenities": [
+        "Wi-Fi",
+        "Проектор",
+        "Звук",
+        "Парковка"
+      ],
+      "images": [
+        "https://images.unsplash.com/photo-1519167758481-83f550bb49b3?auto=format&fit=crop&w=1400&q=80",
+        "https://images.unsplash.com/photo-1497366754035-f200968a6e72?auto=format&fit=crop&w=1400&q=80",
+        "https://images.unsplash.com/photo-1505373877841-8d25f7d46678?auto=format&fit=crop&w=1400&q=80"
+      ],
+      "nextAvailableDates": [
+        "2026-02-25"
+      ],
+      "rating": 4,
+      "reviewsCount": 2,
+      "instantBooking": false,
+      "metroMinutes": 10,
+      "cancellationPolicy": "Бесплатная отмена за 48 часов",
+      "phone": "+7 (995) 592-62-60",
+      "areaSqm": 120,
+      "isPublished": true
+    }
+  ],
+  "reviews": [
+    {
+      "id": "R-1",
+      "venueId": "V-OWN-1",
+      "createdAt": "2026-02-24T17:51:58.997Z",
+      "author": "Smoke Tester",
+      "requesterName": "Smoke Tester",
+      "requesterPhone": "+79991234567",
+      "rating": 4,
+      "text": "Подтверждаю бронирование. Площадка соответствует описанию и требованиям мероприятия.",
+      "sourceLeadRequestId": "L-1",
+      "verified": true,
+      "status": "published",
+      "riskScore": 0,
+      "riskFlags": []
+    },
+    {
+      "id": "R-2",
+      "venueId": "V-OWN-1",
+      "createdAt": "2026-02-24T19:14:41.537Z",
+      "author": "Smoke Tester",
+      "requesterName": "Smoke Tester",
+      "requesterPhone": "+79991234567",
+      "rating": 4,
+      "text": "Подтверждаю бронирование. Площадка соответствует описанию и требованиям мероприятия.",
+      "sourceLeadRequestId": "L-1",
+      "verified": true,
+      "status": "pending",
+      "riskScore": 60,
+      "riskFlags": [
+        "duplicate_reviewer_for_venue"
+      ]
+    },
+    {
+      "id": "R-3",
+      "venueId": "V-OWN-1",
+      "createdAt": "2026-02-24T20:44:49.425Z",
+      "author": "Smoke Tester 9384",
+      "requesterName": "Smoke Tester 9384",
+      "requesterPhone": "+79965889384",
+      "rating": 4,
+      "text": "Подтверждаю бронирование. Площадка соответствует описанию и требованиям мероприятия.",
+      "sourceLeadRequestId": "L-3",
+      "verified": true,
+      "status": "published",
+      "riskScore": 0,
+      "riskFlags": []
+    }
+  ],
+  "leadRequests": [
+    {
+      "id": "L-1",
+      "venueId": "V-OWN-1",
+      "createdAt": "2026-02-24T17:51:58.992Z",
+      "updatedAt": "2026-02-24T17:51:58.996Z",
+      "status": "confirmed",
+      "name": "Smoke Tester",
+      "phone": "+79991234567",
+      "comment": "Smoke flow for verified review"
+    },
+    {
+      "id": "L-2",
+      "venueId": "V-OWN-1",
+      "createdAt": "2026-02-24T19:14:41.523Z",
+      "updatedAt": "2026-02-24T19:14:41.536Z",
+      "status": "confirmed",
+      "name": "Smoke Tester",
+      "phone": "+79991234567",
+      "comment": "Smoke flow for verified review"
+    },
+    {
+      "id": "L-3",
+      "venueId": "V-OWN-1",
+      "createdAt": "2026-02-24T20:44:49.422Z",
+      "updatedAt": "2026-02-24T20:44:49.424Z",
+      "status": "confirmed",
+      "name": "Smoke Tester 9384",
+      "phone": "+79965889384",
+      "comment": "Smoke flow for verified review"
+    }
+  ],
+  "owners": [
+    {
+      "id": "O-1",
+      "name": "Smoke Owner",
+      "email": "smoke_catalog_1771955518588@example.com",
+      "password": "password123",
+      "createdAt": "2026-02-24T17:51:58.594Z",
+      "trialEndsAt": "2026-05-25",
+      "trialStatus": "active",
+      "subscriptionStatus": "active",
+      "subscriptionPlan": "monthly_2000",
+      "nextBillingDate": "2026-03-26"
+    }
+  ],
+  "payments": [
+    {
+      "id": "P-1",
+      "ownerId": "O-1",
+      "amountRub": 2000,
+      "periodDays": 30,
+      "status": "paid",
+      "paidAt": "2026-02-24T17:51:58.631Z",
+      "nextBillingDate": "2026-03-26",
+      "method": "mock"
+    }
+  ],
+  "analyticsEvents": [
+    {
+      "id": "E-1",
+      "event": "owner_register",
+      "createdAt": "2026-02-24T17:51:58.594Z",
+      "meta": {
+        "ownerId": "O-1"
+      }
+    },
+    {
+      "id": "E-2",
+      "event": "venue_view",
+      "createdAt": "2026-02-24T17:51:58.635Z",
+      "meta": {
+        "venueId": "V-OWN-1",
+        "region": "Республика Коми",
+        "category": "Лофт"
+      }
+    },
+    {
+      "id": "E-3",
+      "event": "lead_submit",
+      "createdAt": "2026-02-24T17:51:58.992Z",
+      "meta": {
+        "venueId": "V-OWN-1",
+        "region": "Республика Коми",
+        "category": "Лофт"
+      }
+    },
+    {
+      "id": "E-4",
+      "event": "lead_submit",
+      "createdAt": "2026-02-24T19:14:41.523Z",
+      "meta": {
+        "venueId": "V-OWN-1",
+        "region": "Республика Коми",
+        "category": "Лофт"
+      }
+    },
+    {
+      "id": "E-5",
+      "event": "venue_view",
+      "createdAt": "2026-02-24T19:14:43.821Z",
+      "meta": {
+        "venueId": "V-OWN-1",
+        "region": "Республика Коми",
+        "category": "Лофт"
+      }
+    },
+    {
+      "id": "E-6",
+      "event": "venue_view",
+      "createdAt": "2026-02-24T20:44:33.473Z",
+      "meta": {
+        "venueId": "V-OWN-1",
+        "region": "Республика Коми",
+        "category": "Лофт"
+      }
+    },
+    {
+      "id": "E-7",
+      "event": "lead_submit",
+      "createdAt": "2026-02-24T20:44:49.422Z",
+      "meta": {
+        "venueId": "V-OWN-1",
+        "region": "Республика Коми",
+        "category": "Лофт"
+      }
+    }
+  ],
+  "reviewModerationAudit": [],
+  "supportRequests": []
 }

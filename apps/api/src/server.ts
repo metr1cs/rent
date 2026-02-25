@@ -22,6 +22,9 @@ const leadSlaMinutes = Math.max(5, Number(process.env.LEAD_SLA_MINUTES ?? 30));
 const leadReminderIntervalMinutes = Math.max(3, Number(process.env.LEAD_REMINDER_INTERVAL_MINUTES ?? 10));
 const leadReminderCooldownMinutes = Math.max(10, Number(process.env.LEAD_REMINDER_COOLDOWN_MINUTES ?? 30));
 const leadReminderSendRegistry = new Map<string, number>();
+const opsAlertIntervalMinutes = Math.max(3, Number(process.env.OPS_ALERT_INTERVAL_MINUTES ?? 5));
+const opsAlertCooldownMinutes = Math.max(10, Number(process.env.OPS_ALERT_COOLDOWN_MINUTES ?? 30));
+const opsAlertSendRegistry = new Map<string, number>();
 const adminSessions = new Map<string, { moderator: string; expiresAt: number }>();
 const adminSessionTtlMs = 8 * 60 * 60 * 1000;
 const rateLimitBuckets = new Map<string, { count: number; resetAt: number }>();
@@ -67,6 +70,29 @@ function percentile(values: number[], ratio: number): number {
   return sorted[index];
 }
 
+function computeMonitoringSnapshot() {
+  const total = monitoringState.requestsTotal || 1;
+  const supportTotal = monitoringState.support.success + monitoringState.support.failed;
+  const errorRate5xx = Number(((monitoringState.statusBuckets.s5xx / total) * 100).toFixed(2));
+  const supportFailureRate = supportTotal ? Number(((monitoringState.support.failed / supportTotal) * 100).toFixed(2)) : 0;
+  const p95 = percentile(monitoringState.requestLatenciesMs, 0.95);
+  const p99 = percentile(monitoringState.requestLatenciesMs, 0.99);
+  const alerts = [
+    errorRate5xx > 2 ? `Высокий 5xx rate: ${errorRate5xx}%` : "",
+    p95 > 1200 ? `Высокая latency p95: ${p95} ms` : "",
+    supportFailureRate > 5 ? `Высокий fail-rate поддержки: ${supportFailureRate}%` : "",
+    monitoringState.telegram.failed > monitoringState.telegram.success ? "Telegram failures превышают success" : "",
+  ].filter(Boolean);
+
+  return {
+    errorRate5xx,
+    supportFailureRate,
+    p95,
+    p99,
+    alerts,
+  };
+}
+
 function safeEndpointKey(pathname: string): string {
   return pathname.replace(/[0-9]+/g, ":id");
 }
@@ -77,9 +103,15 @@ function getClientIp(req: Request): string {
   return req.ip || req.socket.remoteAddress || "unknown";
 }
 
+function getClientFingerprint(req: Request): string {
+  const raw = String(req.headers["x-client-fingerprint"] ?? "").trim();
+  if (!raw) return "none";
+  return raw.slice(0, 120);
+}
+
 function consumeRateLimit(req: Request, key: string, limit: number, windowMs: number): boolean {
   const now = Date.now();
-  const bucketKey = `${key}:${getClientIp(req)}`;
+  const bucketKey = `${key}:${getClientIp(req)}:${getClientFingerprint(req)}`;
   const current = rateLimitBuckets.get(bucketKey);
   if (!current || now > current.resetAt) {
     rateLimitBuckets.set(bucketKey, { count: 1, resetAt: now + windowMs });
@@ -109,6 +141,10 @@ app.use(cors());
 app.use(express.json({ limit: "70mb" }));
 app.use((req, res, next) => {
   const started = Date.now();
+  const requestId = crypto.randomUUID();
+  const clientIp = getClientIp(req);
+  const clientFingerprint = getClientFingerprint(req);
+  res.setHeader("x-request-id", requestId);
   res.on("finish", () => {
     const elapsed = Date.now() - started;
     monitoringState.requestsTotal += 1;
@@ -122,6 +158,21 @@ app.use((req, res, next) => {
       monitoringState.statusBuckets.s4xx += 1;
     } else {
       monitoringState.statusBuckets.s2xx += 1;
+    }
+
+    if (res.statusCode >= 400) {
+      console.log(JSON.stringify({
+        level: res.statusCode >= 500 ? "error" : "warn",
+        type: "http_request",
+        requestId,
+        method: req.method,
+        path: req.path,
+        status: res.statusCode,
+        latencyMs: elapsed,
+        ip: clientIp,
+        fingerprint: clientFingerprint,
+        at: new Date().toISOString(),
+      }));
     }
   });
   next();
@@ -389,6 +440,31 @@ function runLeadSlaReminderDispatch(): { sent: number; queued: number } {
   return { sent, queued };
 }
 
+function runOpsAlertDispatch(): { sent: number; active: number } {
+  const snapshot = computeMonitoringSnapshot();
+  const now = Date.now();
+  let sent = 0;
+
+  snapshot.alerts.forEach((alertText) => {
+    const lastSentAt = opsAlertSendRegistry.get(alertText) ?? 0;
+    if (now - lastSentAt < opsAlertCooldownMinutes * 60 * 1000) return;
+    opsAlertSendRegistry.set(alertText, now);
+    sent += 1;
+    void sendTelegramNotification(
+      [
+        "OPS ALERT VmestoRu",
+        alertText,
+        `5xx: ${snapshot.errorRate5xx}%`,
+        `Latency p95/p99: ${snapshot.p95} / ${snapshot.p99} ms`,
+        `Support fail-rate: ${snapshot.supportFailureRate}%`,
+      ].join("\n"),
+      supportTelegramChatId
+    );
+  });
+
+  return { sent, active: snapshot.alerts.length };
+}
+
 app.get("/health", (_req, res) => {
   res.json({ status: "ok", service: "vmestoru-api" });
 });
@@ -501,20 +577,7 @@ app.get("/api/admin/ops/alerts", (req, res) => {
   const moderator = requireAdmin(req, res);
   if (!moderator) return;
 
-  const latencies = monitoringState.requestLatenciesMs;
-  const p95 = percentile(latencies, 0.95);
-  const p99 = percentile(latencies, 0.99);
-  const total = monitoringState.requestsTotal || 1;
-  const errorRate5xx = Number(((monitoringState.statusBuckets.s5xx / total) * 100).toFixed(2));
-  const supportTotal = monitoringState.support.success + monitoringState.support.failed;
-  const supportFailureRate = supportTotal ? Number(((monitoringState.support.failed / supportTotal) * 100).toFixed(2)) : 0;
-
-  const alerts = [
-    errorRate5xx > 2 ? `Высокий 5xx rate: ${errorRate5xx}%` : "",
-    p95 > 1200 ? `Высокая latency p95: ${p95} ms` : "",
-    supportFailureRate > 5 ? `Высокий fail-rate поддержки: ${supportFailureRate}%` : "",
-    monitoringState.telegram.failed > monitoringState.telegram.success ? "Telegram failures превышают success" : "",
-  ].filter(Boolean);
+  const snapshot = computeMonitoringSnapshot();
 
   const top5xxEndpoints = Object.entries(monitoringState.endpoint5xx)
     .sort((a, b) => b[1] - a[1])
@@ -526,17 +589,17 @@ app.get("/api/admin/ops/alerts", (req, res) => {
     requests: {
       total: monitoringState.requestsTotal,
       statusBuckets: monitoringState.statusBuckets,
-      errorRate5xx,
+      errorRate5xx: snapshot.errorRate5xx,
       latencyMs: {
-        p95,
-        p99,
+        p95: snapshot.p95,
+        p99: snapshot.p99,
       },
       top5xxEndpoints,
     },
     support: monitoringState.support,
     telegram: monitoringState.telegram,
     frontendErrors: monitoringState.frontendErrors.slice(-30).reverse(),
-    alerts,
+    alerts: snapshot.alerts,
   });
 });
 
@@ -823,6 +886,11 @@ app.get("/api/admin/reviews/summary", (req, res) => {
   const published = reviews.filter((item) => item.status === "published");
   const hidden = reviews.filter((item) => item.status === "hidden");
   const highRiskPending = pending.filter((item) => item.riskScore >= 60).length;
+  const now = Date.now();
+  const pendingAgesMinutes = pending.map((item) => Math.floor((now - new Date(item.createdAt).getTime()) / 60000));
+  const reviewSlaMinutes = 24 * 60;
+  const pendingOverSla = pendingAgesMinutes.filter((age) => age > reviewSlaMinutes).length;
+  const oldestPendingMinutes = pendingAgesMinutes.length ? Math.max(...pendingAgesMinutes) : 0;
 
   return res.json({
     total: reviews.length,
@@ -830,6 +898,9 @@ app.get("/api/admin/reviews/summary", (req, res) => {
     published: published.length,
     hidden: hidden.length,
     highRiskPending,
+    reviewSlaMinutes,
+    pendingOverSla,
+    oldestPendingMinutes,
     avgRiskPending: pending.length
       ? Number((pending.reduce((sum, item) => sum + item.riskScore, 0) / pending.length).toFixed(1))
       : 0,
@@ -1743,6 +1814,13 @@ const onServerStarted = () => {
     }
   }, leadReminderIntervalMinutes * 60 * 1000);
   console.log(`Lead SLA reminder enabled, interval ${leadReminderIntervalMinutes} min, SLA ${leadSlaMinutes} min`);
+  setInterval(() => {
+    const result = runOpsAlertDispatch();
+    if (result.sent > 0) {
+      console.log(`Ops alerts sent: ${result.sent} (active: ${result.active})`);
+    }
+  }, opsAlertIntervalMinutes * 60 * 1000);
+  console.log(`Ops alerts enabled, interval ${opsAlertIntervalMinutes} min, cooldown ${opsAlertCooldownMinutes} min`);
 
   if (autoBillingNotifierEnabled) {
     const intervalMs = Math.max(5, billingNotifierIntervalMinutes) * 60 * 1000;

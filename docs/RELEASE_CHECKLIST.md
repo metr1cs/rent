@@ -19,6 +19,7 @@
 
 ## Quality Gates
 - [ ] `npm run qa:cycle`
+- [ ] `npm run e2e:critical`
 - [ ] e2e subset for touched functionality
 - [ ] visual snapshots updated/approved
 
@@ -32,7 +33,14 @@
 ## Security
 - [ ] No secrets in code/history/PR comments.
 - [ ] Rate limits checked for changed endpoints.
+- [ ] Nginx reverse-proxy limits applied to write/auth endpoints.
+- [ ] Device fingerprint header is present in critical POST flows.
 - [ ] Admin/session auth path tested.
+
+## Legal
+- [ ] `/privacy` актуальна.
+- [ ] `/terms` опубликована.
+- [ ] `/disputes` опубликована.
 
 ## Sign-off
 - [ ] Tech Lead

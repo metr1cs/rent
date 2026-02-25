@@ -1,4 +1,4 @@
-import React, { type ChangeEvent, FormEvent, useEffect, useMemo, useState } from "react";
+import React, { type ChangeEvent, FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { BrowserRouter, Link, Route, Routes, useLocation, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { DayPicker } from "react-day-picker";
@@ -52,6 +52,9 @@ type AdminReviewSummary = {
   published: number;
   hidden: number;
   highRiskPending: number;
+  reviewSlaMinutes?: number;
+  pendingOverSla?: number;
+  oldestPendingMinutes?: number;
   avgRiskPending: number;
   recentActions: Array<{
     id: string;
@@ -192,7 +195,7 @@ type OwnerDashboard = {
 };
 
 type Theme = "light" | "dark";
-type UiLanguage = "ru" | "en" | "zh" | "es" | "fr" | "de" | "ar" | "hi" | "pt";
+type UiLanguage = "ru";
 type UiCopy = {
   brandTagline: string;
   catalog: string;
@@ -228,142 +231,6 @@ const uiCopy: Record<UiLanguage, UiCopy> = {
     footerContacts: "Контакты",
     footerSupportButton: "Написать в поддержку",
     footerLead: "Премиальная платформа аренды площадок под мероприятия."
-  },
-  en: {
-    brandTagline: "Premium event space rentals",
-    catalog: "Catalog",
-    howToUse: "How it works",
-    forOwners: "For owners",
-    backToCatalog: "Back to catalog",
-    language: "Language",
-    openMenu: "Open menu",
-    switchTheme: "Switch theme",
-    footerNav: "Navigation",
-    footerCatalog: "Catalog",
-    footerOwner: "For owners",
-    footerPrivacy: "Privacy policy",
-    footerContacts: "Contacts",
-    footerSupportButton: "Contact support",
-    footerLead: "Premium platform for event venue rentals."
-  },
-  zh: {
-    brandTagline: "高端活动场地租赁平台",
-    catalog: "目录",
-    howToUse: "使用方式",
-    forOwners: "房东入口",
-    backToCatalog: "返回目录",
-    language: "语言",
-    openMenu: "打开菜单",
-    switchTheme: "切换主题",
-    footerNav: "导航",
-    footerCatalog: "目录",
-    footerOwner: "房东入口",
-    footerPrivacy: "隐私政策",
-    footerContacts: "联系方式",
-    footerSupportButton: "联系支持",
-    footerLead: "高端活动场地租赁平台。"
-  },
-  es: {
-    brandTagline: "Alquiler premium de espacios para eventos",
-    catalog: "Catalogo",
-    howToUse: "Como funciona",
-    forOwners: "Para propietarios",
-    backToCatalog: "Volver al catalogo",
-    language: "Idioma",
-    openMenu: "Abrir menu",
-    switchTheme: "Cambiar tema",
-    footerNav: "Navegacion",
-    footerCatalog: "Catalogo",
-    footerOwner: "Para propietarios",
-    footerPrivacy: "Politica de privacidad",
-    footerContacts: "Contactos",
-    footerSupportButton: "Contactar soporte",
-    footerLead: "Plataforma premium de alquiler de espacios para eventos."
-  },
-  fr: {
-    brandTagline: "Location premium d'espaces evenementiels",
-    catalog: "Catalogue",
-    howToUse: "Comment ca marche",
-    forOwners: "Pour les proprietaires",
-    backToCatalog: "Retour au catalogue",
-    language: "Langue",
-    openMenu: "Ouvrir le menu",
-    switchTheme: "Changer le theme",
-    footerNav: "Navigation",
-    footerCatalog: "Catalogue",
-    footerOwner: "Pour les proprietaires",
-    footerPrivacy: "Politique de confidentialite",
-    footerContacts: "Contacts",
-    footerSupportButton: "Contacter le support",
-    footerLead: "Plateforme premium de location d'espaces evenementiels."
-  },
-  de: {
-    brandTagline: "Premium-Mietplattform fur Eventflachen",
-    catalog: "Katalog",
-    howToUse: "So funktioniert's",
-    forOwners: "Fur Vermieter",
-    backToCatalog: "Zuruck zum Katalog",
-    language: "Sprache",
-    openMenu: "Menu offnen",
-    switchTheme: "Thema wechseln",
-    footerNav: "Navigation",
-    footerCatalog: "Katalog",
-    footerOwner: "Fur Vermieter",
-    footerPrivacy: "Datenschutzrichtlinie",
-    footerContacts: "Kontakte",
-    footerSupportButton: "Support kontaktieren",
-    footerLead: "Premium-Plattform fur die Vermietung von Eventflachen."
-  },
-  ar: {
-    brandTagline: "منصة مميزة لتأجير أماكن الفعاليات",
-    catalog: "الكتالوج",
-    howToUse: "كيفية الاستخدام",
-    forOwners: "للملاك",
-    backToCatalog: "العودة إلى الكتالوج",
-    language: "اللغة",
-    openMenu: "فتح القائمة",
-    switchTheme: "تبديل المظهر",
-    footerNav: "التنقل",
-    footerCatalog: "الكتالوج",
-    footerOwner: "للملاك",
-    footerPrivacy: "سياسة الخصوصية",
-    footerContacts: "جهات الاتصال",
-    footerSupportButton: "تواصل مع الدعم",
-    footerLead: "منصة مميزة لتأجير أماكن الفعاليات."
-  },
-  hi: {
-    brandTagline: "इवेंट स्पेस रेंटल के लिए प्रीमियम प्लेटफॉर्म",
-    catalog: "कैटलॉग",
-    howToUse: "कैसे उपयोग करें",
-    forOwners: "मालिकों के लिए",
-    backToCatalog: "कैटलॉग पर वापस",
-    language: "भाषा",
-    openMenu: "मेनू खोलें",
-    switchTheme: "थीम बदलें",
-    footerNav: "नेविगेशन",
-    footerCatalog: "कैटलॉग",
-    footerOwner: "मालिकों के लिए",
-    footerPrivacy: "गोपनीयता नीति",
-    footerContacts: "संपर्क",
-    footerSupportButton: "सपोर्ट से संपर्क करें",
-    footerLead: "इवेंट स्पेस रेंटल के लिए प्रीमियम प्लेटफॉर्म।"
-  },
-  pt: {
-    brandTagline: "Plataforma premium de locacao de espacos para eventos",
-    catalog: "Catalogo",
-    howToUse: "Como usar",
-    forOwners: "Para proprietarios",
-    backToCatalog: "Voltar ao catalogo",
-    language: "Idioma",
-    openMenu: "Abrir menu",
-    switchTheme: "Alternar tema",
-    footerNav: "Navegacao",
-    footerCatalog: "Catalogo",
-    footerOwner: "Para proprietarios",
-    footerPrivacy: "Politica de privacidade",
-    footerContacts: "Contatos",
-    footerSupportButton: "Falar com suporte",
-    footerLead: "Plataforma premium de locacao de espacos para eventos."
   }
 };
 
@@ -411,6 +278,34 @@ const OWNER_POPULAR_AMENITIES = [
   "Флипчарт",
   "Отдельный вход",
 ];
+
+const CLIENT_FP_KEY = "vmestoru-client-fp";
+
+function getClientFingerprint(): string {
+  if (typeof window === "undefined") return "ssr";
+  const cached = localStorage.getItem(CLIENT_FP_KEY);
+  if (cached) return cached;
+
+  const base = [
+    navigator.userAgent || "ua",
+    navigator.language || "lang",
+    String(screen.width || 0),
+    String(screen.height || 0),
+    Intl.DateTimeFormat().resolvedOptions().timeZone || "tz",
+    String(new Date().getTimezoneOffset()),
+    crypto.randomUUID(),
+  ].join("|");
+  const fingerprint = btoa(unescape(encodeURIComponent(base))).slice(0, 100);
+  localStorage.setItem(CLIENT_FP_KEY, fingerprint);
+  return fingerprint;
+}
+
+function jsonHeaders(): Record<string, string> {
+  return {
+    "Content-Type": "application/json",
+    "x-client-fingerprint": getClientFingerprint(),
+  };
+}
 
 function upsertMetaTag(
   key: "name" | "property",
@@ -540,7 +435,7 @@ async function trackEvent(
   try {
     await fetch(`${API}/api/analytics/event`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: jsonHeaders(),
       body: JSON.stringify({ event, meta })
     });
   } catch {
@@ -552,7 +447,7 @@ async function reportFrontendError(message: string, source = "window"): Promise<
   try {
     await fetch(`${API}/api/monitor/frontend-error`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: jsonHeaders(),
       body: JSON.stringify({
         path: typeof window !== "undefined" ? window.location.pathname : "/",
         message: message.slice(0, 1500),
@@ -605,22 +500,6 @@ function useTheme(): [Theme, () => void] {
   return [theme, () => setTheme((prev) => (prev === "light" ? "dark" : "light"))];
 }
 
-function useLanguage(): [UiLanguage, (next: UiLanguage) => void] {
-  const [language, setLanguage] = useState<UiLanguage>(() => {
-    const saved = localStorage.getItem("vmestoru-language");
-    const allowed: UiLanguage[] = ["ru", "en", "zh", "es", "fr", "de", "ar", "hi", "pt"];
-    return allowed.includes(saved as UiLanguage) ? (saved as UiLanguage) : "ru";
-  });
-
-  useEffect(() => {
-    localStorage.setItem("vmestoru-language", language);
-    document.documentElement.lang = language;
-    document.documentElement.dir = language === "ar" ? "rtl" : "ltr";
-  }, [language]);
-
-  return [language, (next) => setLanguage(next)];
-}
-
 function DateField({ value, onChange }: { value: Date | undefined; onChange: (date: Date | undefined) => void }) {
   const [opened, setOpened] = useState(false);
 
@@ -666,22 +545,34 @@ function Breadcrumbs({ items }: { items: Array<{ label: string; to?: string }> }
 function Header({
   theme,
   onToggleTheme,
-  language,
-  onLanguageChange
+  language
 }: {
   theme: Theme;
   onToggleTheme: () => void;
   language: UiLanguage;
-  onLanguageChange: (next: UiLanguage) => void;
 }) {
   const location = useLocation();
   const isOwnerRoute = location.pathname.startsWith("/owner");
   const [menuOpen, setMenuOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement | null>(null);
+  const burgerRef = useRef<HTMLButtonElement | null>(null);
   const t = uiCopy[language];
 
   useEffect(() => {
     setMenuOpen(false);
   }, [location.pathname]);
+
+  useEffect(() => {
+    if (!menuOpen) return;
+    const onPointerDown = (event: PointerEvent) => {
+      const target = event.target as Node;
+      if (menuRef.current?.contains(target)) return;
+      if (burgerRef.current?.contains(target)) return;
+      setMenuOpen(false);
+    };
+    window.addEventListener("pointerdown", onPointerDown);
+    return () => window.removeEventListener("pointerdown", onPointerDown);
+  }, [menuOpen]);
 
   return (
     <header className="header glass">
@@ -699,6 +590,7 @@ function Header({
 
       <div className="header-controls">
         <button
+          ref={burgerRef}
           type="button"
           className={menuOpen ? "header-burger is-open" : "header-burger"}
           aria-label={t.openMenu}
@@ -711,36 +603,28 @@ function Header({
         </button>
       </div>
 
-      <div className={menuOpen ? "header-menu open" : "header-menu"}>
-        <div className="header-actions">
-          <Link to={isOwnerRoute ? "/" : "/owner"} className="become-owner">
-            {isOwnerRoute ? t.backToCatalog : t.forOwners}
-          </Link>
-          <label className="filter-item header-language">
-            <span>{t.language}</span>
-            <select value={language} onChange={(e) => onLanguageChange(e.target.value as UiLanguage)}>
-              <option value="ru">Русский</option>
-              <option value="en">English</option>
-              <option value="zh">中文</option>
-              <option value="es">Español</option>
-              <option value="fr">Français</option>
-              <option value="de">Deutsch</option>
-              <option value="ar">العربية</option>
-              <option value="hi">हिन्दी</option>
-              <option value="pt">Português</option>
-            </select>
-          </label>
-          <button
-            type="button"
-            className={theme === "dark" ? "theme-switch is-dark" : "theme-switch"}
-            onClick={onToggleTheme}
-            aria-label={t.switchTheme}
-            title={t.switchTheme}
-          >
-            <span className="theme-switch-track" aria-hidden="true">
-              <span className="theme-switch-thumb">{theme === "light" ? "☀" : "☾"}</span>
-            </span>
-          </button>
+      <div ref={menuRef} className={menuOpen ? "header-menu open" : "header-menu"}>
+        <div className="header-menu-stack">
+          <div className="header-menu-links">
+            <Link to="/catalog" onClick={() => setMenuOpen(false)}>{t.catalog}</Link>
+            <a href="/#how-it-works" onClick={() => setMenuOpen(false)}>{t.howToUse}</a>
+          </div>
+          <div className="header-actions">
+            <Link to={isOwnerRoute ? "/" : "/owner"} className="become-owner">
+              {isOwnerRoute ? t.backToCatalog : t.forOwners}
+            </Link>
+            <button
+              type="button"
+              className={theme === "dark" ? "theme-switch is-dark" : "theme-switch"}
+              onClick={onToggleTheme}
+              aria-label={t.switchTheme}
+              title={t.switchTheme}
+            >
+              <span className="theme-switch-track" aria-hidden="true">
+                <span className="theme-switch-thumb">{theme === "light" ? "☀" : "☾"}</span>
+              </span>
+            </button>
+          </div>
         </div>
       </div>
     </header>
@@ -1079,7 +963,7 @@ function HomePage() {
 
     const response = await fetch(`${API}/api/ai/search`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: jsonHeaders(),
       body: JSON.stringify({ query: aiQuery })
     });
 
@@ -2043,7 +1927,7 @@ function VenuePage() {
 
     const response = await fetch(`${API}/api/venues/${id}/requests`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: jsonHeaders(),
       body: JSON.stringify(lead),
     });
 
@@ -2249,7 +2133,7 @@ function OwnerPage() {
 
     const response = await fetch(`${API}${endpoint}`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: jsonHeaders(),
       body: JSON.stringify(payload)
     });
 
@@ -2343,7 +2227,7 @@ function OwnerPage() {
         editingVenueId ? `${API}/api/owner/venues/${encodeURIComponent(editingVenueId)}` : `${API}/api/owner/venues`,
         {
         method: editingVenueId ? "PATCH" : "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: jsonHeaders(),
         body: JSON.stringify({
           ownerId: owner.id,
           title: venueForm.title,
@@ -2514,7 +2398,7 @@ function OwnerPage() {
 
     const response = await fetch(`${API}/api/owner/venues/${encodeURIComponent(venueId)}`, {
       method: "DELETE",
-      headers: { "Content-Type": "application/json" },
+      headers: jsonHeaders(),
       body: JSON.stringify({ ownerId: owner.id })
     });
     const payload = (await response.json().catch(() => ({}))) as { message?: string };
@@ -2543,7 +2427,7 @@ function OwnerPage() {
     try {
       const response = await fetch(`${API}/api/owner/requests/${encodeURIComponent(requestId)}/status`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: jsonHeaders(),
         body: JSON.stringify({ ownerId: owner.id, status })
       });
       const json = (await response.json().catch(() => ({}))) as { message?: string };
@@ -2933,7 +2817,7 @@ function AdminPanelPage() {
     try {
       const response = await fetch(`${API}/api/admin/auth`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: jsonHeaders(),
         body: JSON.stringify({
           login: adminLogin.trim(),
           password: adminPassword,
@@ -3001,7 +2885,7 @@ function AdminPanelPage() {
     setNotice("");
     const response = await fetch(`${API}/api/admin/owners/${encodeURIComponent(ownerId)}/access`, {
       method: "PATCH",
-      headers: { ...sessionHeaders(), "Content-Type": "application/json" },
+      headers: { ...sessionHeaders(), ...jsonHeaders() },
       body: JSON.stringify(payload),
     });
     if (!response.ok) {
@@ -3016,7 +2900,7 @@ function AdminPanelPage() {
     setNotice("");
     const response = await fetch(`${API}/api/admin/venues/${encodeURIComponent(venueId)}`, {
       method: "PATCH",
-      headers: { ...sessionHeaders(), "Content-Type": "application/json" },
+      headers: { ...sessionHeaders(), ...jsonHeaders() },
       body: JSON.stringify({ isPublished: nextPublished }),
     });
     if (!response.ok) {
@@ -3045,7 +2929,7 @@ function AdminPanelPage() {
     setNotice("");
     const response = await fetch(`${API}/api/admin/requests/${encodeURIComponent(requestId)}/status`, {
       method: "PATCH",
-      headers: { ...sessionHeaders(), "Content-Type": "application/json" },
+      headers: { ...sessionHeaders(), ...jsonHeaders() },
       body: JSON.stringify({ status }),
     });
     if (!response.ok) {
@@ -3060,7 +2944,7 @@ function AdminPanelPage() {
     setNotice("");
     const response = await fetch(`${API}/api/admin/support/${encodeURIComponent(requestId)}`, {
       method: "PATCH",
-      headers: { ...sessionHeaders(), "Content-Type": "application/json" },
+      headers: { ...sessionHeaders(), ...jsonHeaders() },
       body: JSON.stringify({ status }),
     });
     if (!response.ok) {
@@ -3229,8 +3113,13 @@ function AdminPanelPage() {
         <div className="admin-list">
           <article className="admin-card">
             <h3>Модерация отзывов</h3>
-            <p className="muted">Pending: {reviewSummary?.pending ?? 0} · High-risk: {reviewSummary?.highRiskPending ?? 0}</p>
-            <p className="muted">Рекомендуем назначить 1-2 ответственных модератора с ежедневной проверкой очереди.</p>
+            <p className="muted">
+              Pending: {reviewSummary?.pending ?? 0} · High-risk: {reviewSummary?.highRiskPending ?? 0} ·
+              SLA breach: {reviewSummary?.pendingOverSla ?? 0}
+            </p>
+            <p className="muted">
+              Рекомендуем назначить 1-2 ответственных модератора с ежедневной проверкой очереди и SLA {Math.floor((reviewSummary?.reviewSlaMinutes ?? 1440) / 60)} ч.
+            </p>
             <Link to="/admin/reviews" className="primary">Открыть модерацию отзывов</Link>
           </article>
         </div>
@@ -3324,7 +3213,7 @@ function AdminReviewsPage() {
     try {
       const response = await fetch(`${API}/api/admin/auth`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: jsonHeaders(),
         body: JSON.stringify({
           login: adminLogin.trim(),
           password: adminPassword,
@@ -3388,7 +3277,7 @@ function AdminReviewsPage() {
       const response = await fetch(`${API}/api/admin/reviews/${encodeURIComponent(reviewId)}/moderate`, {
         method: "POST",
         headers: {
-          "Content-Type": "application/json",
+          ...jsonHeaders(),
           "x-admin-session": adminSession.trim(),
         },
         body: JSON.stringify({ status: nextStatus, note: notes[reviewId] ?? "", moderator: moderatorName.trim() || "Moderator" }),
@@ -3418,7 +3307,7 @@ function AdminReviewsPage() {
           fetch(`${API}/api/admin/reviews/${encodeURIComponent(reviewId)}/moderate`, {
             method: "POST",
             headers: {
-              "Content-Type": "application/json",
+              ...jsonHeaders(),
               "x-admin-session": adminSession.trim(),
             },
             body: JSON.stringify({ status: nextStatus, note: notes[reviewId] ?? "", moderator: moderatorName.trim() || "Moderator" }),
@@ -3521,6 +3410,8 @@ function AdminReviewsPage() {
           <article className="metric-card"><p>Pending</p><strong>{summary.pending}</strong></article>
           <article className="metric-card"><p>High-risk pending</p><strong>{summary.highRiskPending}</strong></article>
           <article className="metric-card"><p>Avg risk pending</p><strong>{summary.avgRiskPending}</strong></article>
+          <article className="metric-card"><p>SLA breach</p><strong>{summary.pendingOverSla ?? 0}</strong></article>
+          <article className="metric-card"><p>Oldest pending</p><strong>{summary.oldestPendingMinutes ? `${summary.oldestPendingMinutes} мин` : "0 мин"}</strong></article>
         </section>
       ) : null}
 
@@ -3720,10 +3611,147 @@ function PrivacyPage() {
         Запросы по вопросам обработки персональных данных рассматриваются в разумный срок, предусмотренный законодательством.
         Для идентификации заявителя оператор может запросить дополнительную информацию.
       </p>
-      <h3>12. Контакты и обновления Политики</h3>
+      <h3>12. Локализация хранения и доступ</h3>
+      <p>
+        Базы с персональными данными размещаются на инфраструктуре, контролируемой оператором и хостинг-партнерами
+        с соблюдением требований по безопасности и разграничению доступа. Доступ предоставляется по принципу минимальной
+        достаточности и фиксируется в журналах действий.
+      </p>
+      <h3>13. Управление согласием и cookies</h3>
+      <p>
+        Пользователь может отозвать согласие на обработку персональных данных и изменить настройки cookies через инструменты
+        браузера либо направив обращение оператору. Отзыв согласия не влияет на законность обработки, выполненной до момента отзыва.
+      </p>
+      <h3>14. Контакты и обновления Политики</h3>
       <p>
         По вопросам персональных данных: info@vmestoru.ru, +7 (995) 592-62-60, форма в разделе поддержки.
         Оператор вправе обновлять Политику; актуальная редакция публикуется на этой странице и вступает в силу с даты публикации.
+      </p>
+    </section>
+  );
+}
+
+function TermsPage() {
+  useEffect(() => {
+    applySeo({
+      title: "Пользовательское соглашение (оферта) — VmestoRu",
+      description: "Публичная оферта и правила использования сервиса VmestoRu для арендаторов и арендодателей.",
+      path: "/terms",
+      jsonLd: [
+        {
+          id: "terms-page",
+          payload: {
+            "@context": "https://schema.org",
+            "@type": "WebPage",
+            name: "Пользовательское соглашение",
+            url: `${SITE_URL}/terms`,
+          },
+        },
+      ],
+    });
+  }, []);
+
+  return (
+    <section className="section glass legal-page reveal-on-scroll">
+      <h1>Пользовательское соглашение (публичная оферта)</h1>
+      <p>
+        Настоящий документ регулирует условия использования платформы VmestoRu и является публичной офертой
+        в соответствии со ст. 437 ГК РФ. Использование сервиса означает акцепт условий оферты.
+      </p>
+      <h3>1. Предмет</h3>
+      <p>
+        Платформа предоставляет информационный сервис для подбора площадок и передачи заявок между арендаторами и арендодателями.
+        VmestoRu не является стороной договора аренды между пользователями, если иное не указано отдельно.
+      </p>
+      <h3>2. Статусы и роли</h3>
+      <p>
+        Арендатор может искать площадки и отправлять заявки. Арендодатель публикует карточки площадок, обрабатывает заявки
+        и несет ответственность за актуальность условий, фото, цен и доступности.
+      </p>
+      <h3>3. Требования к контенту</h3>
+      <p>
+        Запрещено публиковать недостоверные сведения, чужие контактные данные, контент, нарушающий права третьих лиц,
+        а также информацию, вводящую пользователей в заблуждение. Платформа вправе скрывать и удалять такие материалы.
+      </p>
+      <h3>4. Обработка заявок и SLA</h3>
+      <p>
+        Арендодатель обязан своевременно обрабатывать входящие заявки. Платформа может использовать статусную модель
+        и уведомления по SLA для повышения качества сервиса.
+      </p>
+      <h3>5. Ограничение ответственности</h3>
+      <p>
+        Платформа не гарантирует заключение сделки и не отвечает за действия контрагентов, кроме случаев,
+        прямо предусмотренных законодательством РФ. Ответственность платформы ограничена пределами фактического ущерба.
+      </p>
+      <h3>6. Интеллектуальная собственность</h3>
+      <p>
+        Все элементы платформы, включая дизайн и программный код, защищены законодательством об интеллектуальной собственности.
+      </p>
+      <h3>7. Изменение условий</h3>
+      <p>
+        Платформа вправе изменять условия оферты. Новая редакция действует с момента публикации на сайте,
+        если иное не предусмотрено в самой редакции.
+      </p>
+      <h3>8. Контакты</h3>
+      <p>
+        По вопросам оферты и правовых обращений: info@vmestoru.ru, +7 (995) 592-62-60.
+      </p>
+    </section>
+  );
+}
+
+function DisputesPage() {
+  useEffect(() => {
+    applySeo({
+      title: "Регламент споров и жалоб — VmestoRu",
+      description: "Публичный порядок обработки жалоб, споров по заявкам и модерации отзывов на платформе VmestoRu.",
+      path: "/disputes",
+      jsonLd: [
+        {
+          id: "disputes-page",
+          payload: {
+            "@context": "https://schema.org",
+            "@type": "WebPage",
+            name: "Регламент споров и жалоб",
+            url: `${SITE_URL}/disputes`,
+          },
+        },
+      ],
+    });
+  }, []);
+
+  return (
+    <section className="section glass legal-page reveal-on-scroll">
+      <h1>Регламент споров и жалоб</h1>
+      <p>
+        Регламент определяет порядок подачи и рассмотрения обращений между арендаторами, арендодателями и командой VmestoRu.
+      </p>
+      <h3>1. Каналы подачи</h3>
+      <p>
+        Жалоба подается через форму поддержки на сайте. В обращении укажите ID заявки/площадки, дату события и суть проблемы.
+      </p>
+      <h3>2. Сроки</h3>
+      <p>
+        Первичный ответ поддержки: до 24 часов. Сложные споры с проверкой материалов: до 5 рабочих дней.
+      </p>
+      <h3>3. Проверка фактов</h3>
+      <p>
+        Команда анализирует переписку, статусы заявок, историю модерации, а также подтверждающие материалы сторон.
+        При недостающих данных может быть запрошена дополнительная информация.
+      </p>
+      <h3>4. Решения по спору</h3>
+      <p>
+        Возможные решения: предупреждение, скрытие/удаление контента, временное ограничение доступа, отклонение жалобы
+        при отсутствии подтверждений. Решение фиксируется в системе и сообщается сторонам.
+      </p>
+      <h3>5. Отзывы и модерация</h3>
+      <p>
+        Отзывы публикуются после антифрод-проверки; спорные отзывы переводятся в ручную модерацию.
+        При подтверждении нарушений отзыв может быть скрыт.
+      </p>
+      <h3>6. Эскалация</h3>
+      <p>
+        Если сторона не согласна с решением, она может подать повторное обращение с новыми доказательствами.
       </p>
     </section>
   );
@@ -3801,7 +3829,7 @@ function Footer({ language }: { language: UiLanguage }) {
     setSupportMessage("");
     const response = await fetch(`${API}/api/support/requests`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: jsonHeaders(),
       body: JSON.stringify({ ...supportForm, page: window.location.pathname })
     });
     const payload = (await response.json().catch(() => ({}))) as { message?: string };
@@ -3828,6 +3856,8 @@ function Footer({ language }: { language: UiLanguage }) {
           <p><Link to="/catalog">{t.footerCatalog}</Link></p>
           <p><Link to="/owner">{t.footerOwner}</Link></p>
           <p><Link to="/privacy">{t.footerPrivacy}</Link></p>
+          <p><Link to="/terms">Оферта</Link></p>
+          <p><Link to="/disputes">Споры и жалобы</Link></p>
         </div>
         <div>
           <h4>{t.footerContacts}</h4>
@@ -3895,7 +3925,12 @@ function App() {
 
 function AppContent({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: () => void }) {
   const location = useLocation();
-  const [language, setLanguage] = useLanguage();
+  const language: UiLanguage = "ru";
+  useEffect(() => {
+    document.documentElement.lang = "ru";
+    document.documentElement.dir = "ltr";
+  }, []);
+
   useEffect(() => {
     const onError = (event: ErrorEvent) => {
       const message = event.error?.message || event.message || "Unknown frontend error";
@@ -3949,7 +3984,7 @@ function AppContent({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: () 
   return (
     <div className="app-shell">
       <div className="animated-background" aria-hidden="true" />
-        <Header theme={theme} onToggleTheme={onToggleTheme} language={language} onLanguageChange={setLanguage} />
+        <Header theme={theme} onToggleTheme={onToggleTheme} language={language} />
       <main>
         <Routes>
           <Route path="/" element={<HomePage />} />
@@ -3962,6 +3997,8 @@ function AppContent({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: () 
           <Route path="/admin" element={<AdminPanelPage />} />
           <Route path="/admin/reviews" element={<AdminReviewsPage />} />
           <Route path="/privacy" element={<PrivacyPage />} />
+          <Route path="/terms" element={<TermsPage />} />
+          <Route path="/disputes" element={<DisputesPage />} />
           <Route path="*" element={<NotFoundPage />} />
         </Routes>
       </main>

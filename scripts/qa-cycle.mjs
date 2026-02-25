@@ -49,8 +49,8 @@ async function prepareLaravelSqliteDatabase() {
       env: {
         DB_CONNECTION: "sqlite",
         DB_DATABASE: laravelSqlite,
-        ADMIN_PANEL_LOGIN: process.env.ADMIN_PANEL_LOGIN || "Kaktyz12",
-        ADMIN_PANEL_PASSWORD: process.env.ADMIN_PANEL_PASSWORD || "DontPussy1221"
+        ADMIN_PANEL_LOGIN: process.env.ADMIN_PANEL_LOGIN || "admin",
+        ADMIN_PANEL_PASSWORD: process.env.ADMIN_PANEL_PASSWORD || "change_me_123"
       }
     }
   );
@@ -129,8 +129,8 @@ async function main() {
       env: {
         DB_CONNECTION: "sqlite",
         DB_DATABASE: laravelSqlite,
-        ADMIN_PANEL_LOGIN: process.env.ADMIN_PANEL_LOGIN || "Kaktyz12",
-        ADMIN_PANEL_PASSWORD: process.env.ADMIN_PANEL_PASSWORD || "DontPussy1221"
+        ADMIN_PANEL_LOGIN: process.env.ADMIN_PANEL_LOGIN || "admin",
+        ADMIN_PANEL_PASSWORD: process.env.ADMIN_PANEL_PASSWORD || "change_me_123"
       }
     }
   );

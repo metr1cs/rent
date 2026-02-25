@@ -36,6 +36,7 @@ Required e2e flows:
 - Support modal -> support request API success/error.
 - Owner login/register -> create venue -> delete venue.
 - Admin moderation sign-in -> list -> moderate review.
+- Critical e2e command: `npm run e2e:critical`
 
 Visual regression:
 - Snapshot baselines for `/`, `/catalog`, `/venue/:id`, `/owner`.
@@ -61,10 +62,12 @@ Track and alert on:
 - Rotate leaked credentials immediately.
 - Keep secrets only in environment/secret manager.
 - Add rate limits for public + admin endpoints.
+- Add reverse-proxy rate limits in Nginx for write/auth endpoints.
 - Keep admin routes protected by session and server-side key validation.
+- Use device fingerprint (`x-client-fingerprint`) in anti-fraud checks.
 
 ## 8) Content/Data Quality
-- Venue creation requires minimum 3 photos.
+- Venue creation requires minimum 5 photos.
 - Validate required fields + normalize phone/address/city.
 - Moderate user-generated reviews.
 - Periodic checks for broken/empty images.

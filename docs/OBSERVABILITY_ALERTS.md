@@ -15,6 +15,8 @@ Date: 2026-02-24
   - `POST /api/monitor/frontend-error`
 - Admin alerts endpoint:
   - `GET /api/admin/ops/alerts`
+- Structured warn/error request logs (JSON) for centralized collection.
+- Background OPS alert dispatcher to Telegram channel with cooldown.
 
 ## API endpoints
 - `GET /api/admin/ops/alerts` (admin auth required)
@@ -27,6 +29,6 @@ Date: 2026-02-24
 - Telegram failed > success
 
 ## Next step
-- Push alerts to Telegram/monitoring channel on threshold breach.
+- Connect stdout JSON logs to centralized collector (Loki/ELK/Sentry).
 - Add persistent storage for monitoring snapshots.
 - Integrate with external APM (Sentry/Grafana/Prometheus).

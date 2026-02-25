@@ -122,8 +122,11 @@ body {
 .header-nav {
   display: flex;
   align-items: center;
-  justify-content: center;
-  gap: 18px;
+  justify-content: flex-start;
+  flex-wrap: wrap;
+  gap: 22px;
+  min-width: 0;
+  padding-inline: 8px;
 }
 
 .header-nav a {
@@ -199,6 +202,23 @@ body {
 
 .header-menu.open {
   display: grid;
+}
+
+.header-menu-stack { display: grid; gap: 50px; }
+
+.header-menu-links {
+  display: grid;
+  gap: 50px;
+}
+
+.header-menu-links a {
+  text-decoration: none;
+  color: var(--text);
+  font-weight: 700;
+}
+
+.header-menu-links a:hover {
+  color: var(--brand-a);
 }
 
 .header-actions { display: grid; gap: 50px; }
