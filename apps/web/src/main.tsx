@@ -134,6 +134,7 @@ type SavedSearch = {
   category: string;
   capacity: string;
   areaMin: string;
+  priceMax: string;
   date: string;
   sort: string;
   quickFilters: QuickFilters;
@@ -151,6 +152,21 @@ type OwnerLead = {
   responseSlaMinutes: number;
   ageMinutes: number;
   isSlaBreached: boolean;
+};
+
+const ownerLeadStatusLabels: Record<OwnerLead["status"], string> = {
+  new: "Новая",
+  in_progress: "В работе",
+  call_scheduled: "Созвон",
+  confirmed: "Подтверждена",
+  rejected: "Отклонена",
+};
+
+const supportStatusLabels: Record<AdminSupportRow["status"], string> = {
+  new: "Новое",
+  in_progress: "В работе",
+  resolved: "Решено",
+  rejected: "Отклонено",
 };
 type OwnerDashboard = {
   ownerId: string;
@@ -768,6 +784,7 @@ function HomePage() {
   const [category, setCategory] = useState("");
   const [capacity, setCapacity] = useState("");
   const [areaMin, setAreaMin] = useState("");
+  const [priceMax, setPriceMax] = useState("");
   const [date, setDate] = useState<Date | undefined>(undefined);
   const [sort, setSort] = useState("recommended");
   const [quickFilters, setQuickFilters] = useState<QuickFilters>({
@@ -900,7 +917,7 @@ function HomePage() {
                 name: "Как добавить площадку на VmestoRu?",
                 acceptedAnswer: {
                   "@type": "Answer",
-                  text: "Зарегистрируйтесь как арендодатель, заполните карточку площадки и добавьте минимум 3 фотографии.",
+                  text: "Зарегистрируйтесь как арендодатель, заполните карточку площадки и добавьте минимум 5 фотографий.",
                 },
               },
               {
@@ -945,6 +962,7 @@ function HomePage() {
     if (category) params.set("category", category);
     if (capacity) params.set("capacity", capacity);
     if (areaMin) params.set("areaMin", areaMin);
+    if (priceMax) params.set("priceMax", priceMax);
     if (date) params.set("date", formatDateValue(date));
     params.set("sort", sort);
 
@@ -958,6 +976,16 @@ function HomePage() {
   async function handleSearch(event: FormEvent): Promise<void> {
     event.preventDefault();
     const params = buildSearchParams();
+    void trackEvent("category_filter_apply", {
+      source: "home",
+      hasQuery: Boolean(query),
+      hasRegion: Boolean(region),
+      hasCategory: Boolean(category),
+      hasCapacity: Boolean(capacity),
+      hasAreaMin: Boolean(areaMin),
+      hasPriceMax: Boolean(priceMax),
+      sort,
+    });
 
     const response = await fetch(`${API}/api/venues?${params.toString()}`);
     if (!response.ok) return;
@@ -974,6 +1002,7 @@ function HomePage() {
     setCategory("");
     setCapacity("");
     setAreaMin("");
+    setPriceMax("");
     setDate(undefined);
     setSort("recommended");
     setQuickFilters({ parking: false, stage: false, late: false, instant: false });
@@ -992,12 +1021,19 @@ function HomePage() {
   function saveCurrentSearch(): void {
     const next: SavedSearch = {
       id: `${Date.now()}`,
-      label: [category || "Все категории", region || "Все регионы", capacity ? `${capacity} гостей` : "", areaMin ? `от ${areaMin} м2` : ""].filter(Boolean).join(" · "),
+      label: [
+        category || "Все категории",
+        region || "Все регионы",
+        capacity ? `${capacity} гостей` : "",
+        areaMin ? `от ${areaMin} м2` : "",
+        priceMax ? `до ${formatRub(Number(priceMax))} ₽/ч` : "",
+      ].filter(Boolean).join(" · "),
       query,
       region,
       category,
       capacity,
       areaMin,
+      priceMax,
       date: date ? formatDateValue(date) : "",
       sort,
       quickFilters
@@ -1013,6 +1049,7 @@ function HomePage() {
     setCategory(item.category);
     setCapacity(item.capacity);
     setAreaMin(item.areaMin ?? "");
+    setPriceMax(item.priceMax ?? "");
     setDate(item.date ? new Date(item.date) : undefined);
     setSort(item.sort);
     setQuickFilters(item.quickFilters);
@@ -1023,6 +1060,7 @@ function HomePage() {
     if (item.category) params.set("category", item.category);
     if (item.capacity) params.set("capacity", item.capacity);
     if (item.areaMin) params.set("areaMin", item.areaMin);
+    if (item.priceMax) params.set("priceMax", item.priceMax);
     if (item.date) params.set("date", item.date);
     params.set("sort", item.sort);
     if (item.quickFilters.parking) params.set("parking", "true");
@@ -1143,6 +1181,10 @@ function HomePage() {
           <label className="filter-item">
             <span>Площадь (м2)</span>
             <input type="number" min="1" placeholder="Например, 120" value={areaMin} onChange={(e) => setAreaMin(e.target.value)} />
+          </label>
+          <label className="filter-item">
+            <span>Бюджет до (₽/час)</span>
+            <input type="number" min="1" placeholder="Например, 12000" value={priceMax} onChange={(e) => setPriceMax(e.target.value)} />
           </label>
           <label className="filter-item">
             <span>Сортировка</span>
@@ -1340,6 +1382,7 @@ function CatalogPage() {
   const [venues, setVenues] = useState<Venue[]>([]);
   const [query, setQuery] = useState("");
   const [region, setRegion] = useState("");
+  const [priceMax, setPriceMax] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
@@ -1409,6 +1452,7 @@ function CatalogPage() {
   function resetCatalogFilters(): void {
     setQuery("");
     setRegion("");
+    setPriceMax("");
   }
 
   const categoryCards = useMemo(() => {
@@ -1417,19 +1461,21 @@ function CatalogPage() {
       .map((item) => {
         const inCategory = venues.filter((venue) => venue.category === item.name);
         const inRegion = region ? inCategory.filter((venue) => venue.region === region) : inCategory;
+        const inBudget = priceMax ? inRegion.filter((venue) => venue.pricePerHour <= Number(priceMax)) : inRegion;
         return {
           id: item.id,
           name: item.name,
           image: categoryWebpArt(item.name),
-          count: inRegion.length,
+          count: inBudget.length,
         };
       })
       .filter((item) => item.count > 0);
-  }, [categories, venues, query, region]);
+  }, [categories, venues, query, region, priceMax]);
 
   const visibleVenues = useMemo(() => {
     return venues
       .filter((item) => (region ? item.region === region : true))
+      .filter((item) => (priceMax ? item.pricePerHour <= Number(priceMax) : true))
       .filter((item) => {
         if (!query) return true;
         const normalized = query.trim().toLowerCase();
@@ -1437,7 +1483,7 @@ function CatalogPage() {
       })
       .sort((a, b) => b.rating - a.rating)
       .slice(0, 48);
-  }, [venues, region, query]);
+  }, [venues, region, query, priceMax]);
 
   return (
     <section className="section glass reveal-on-scroll">
@@ -1456,6 +1502,10 @@ function CatalogPage() {
               <option key={item} value={item}>{item}</option>
             ))}
           </select>
+        </label>
+        <label className="filter-item">
+          <span>Бюджет до (₽/час)</span>
+          <input type="number" min="1" value={priceMax} onChange={(e) => setPriceMax(e.target.value)} placeholder="Например, 12000" />
         </label>
         <button type="button" className="ghost-btn catalog-reset" onClick={resetCatalogFilters}>Сбросить фильтр</button>
       </form>
@@ -1669,6 +1719,7 @@ function CategoryPage() {
   const [region, setRegion] = useState(citySlug ? "" : (searchParams.get("region") ?? ""));
   const [capacity, setCapacity] = useState(searchParams.get("capacity") ?? "");
   const [areaMin, setAreaMin] = useState(searchParams.get("areaMin") ?? "");
+  const [priceMax, setPriceMax] = useState(searchParams.get("priceMax") ?? "");
   const [sort, setSort] = useState(searchParams.get("sort") || "recommended");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -1678,6 +1729,7 @@ function CategoryPage() {
     setRegion(citySlug ? "" : (searchParams.get("region") ?? ""));
     setCapacity(searchParams.get("capacity") ?? "");
     setAreaMin(searchParams.get("areaMin") ?? "");
+    setPriceMax(searchParams.get("priceMax") ?? "");
     setSort(searchParams.get("sort") || "recommended");
     void loadCategory();
   }, [slug, citySlug, searchParams]);
@@ -1685,7 +1737,7 @@ function CategoryPage() {
   useEffect(() => {
     if (!slug || !categoryName) return;
     const basePath = citySlug ? `/category/${slug}/${citySlug}` : `/category/${slug}`;
-    const hasSeoFilters = Boolean(query || capacity || areaMin || sort !== "recommended" || (!citySlug && region));
+    const hasSeoFilters = Boolean(query || capacity || areaMin || priceMax || sort !== "recommended" || (!citySlug && region));
     const normalizedRegion = citySlug ? lockedRegion : region;
     const titleRegionSuffix = normalizedRegion ? ` в ${normalizedRegion}` : "";
     const descriptionRegionSuffix = normalizedRegion ? ` в городе ${normalizedRegion}` : "";
@@ -1722,7 +1774,7 @@ function CategoryPage() {
         },
       ],
     });
-  }, [categoryName, slug, citySlug, lockedRegion, query, capacity, areaMin, sort, region]);
+  }, [categoryName, slug, citySlug, lockedRegion, query, capacity, areaMin, priceMax, sort, region]);
 
   async function loadCategory(): Promise<void> {
     if (!slug) return;
@@ -1757,6 +1809,7 @@ function CategoryPage() {
       if (effectiveRegion) params.set("region", effectiveRegion);
       if (capacity) params.set("capacity", capacity);
       if (areaMin) params.set("areaMin", areaMin);
+      if (priceMax) params.set("priceMax", priceMax);
       if (sort) params.set("sort", sort);
 
       const venuesRes = await fetch(`${API}/api/venues?${params.toString()}`);
@@ -1782,6 +1835,7 @@ function CategoryPage() {
     if (!citySlug && region) params.set("region", region);
     if (capacity) params.set("capacity", capacity);
     if (areaMin) params.set("areaMin", areaMin);
+    if (priceMax) params.set("priceMax", priceMax);
     if (sort) params.set("sort", sort);
     void trackEvent("category_filter_apply", {
       category: categoryName || slug || "",
@@ -1789,6 +1843,7 @@ function CategoryPage() {
       hasQuery: Boolean(query),
       hasCapacity: Boolean(capacity),
       hasAreaMin: Boolean(areaMin),
+      hasPriceMax: Boolean(priceMax),
       sort,
     });
     setSearchParams(params);
@@ -1799,6 +1854,7 @@ function CategoryPage() {
     setRegion(citySlug ? lockedRegion : "");
     setCapacity("");
     setAreaMin("");
+    setPriceMax("");
     setSort("recommended");
     setSearchParams(new URLSearchParams({ sort: "recommended" }));
   }
@@ -1842,6 +1898,10 @@ function CategoryPage() {
         <label className="filter-item">
           <span>Площадь (м2)</span>
           <input type="number" min="1" placeholder="Например, 120" value={areaMin} onChange={(e) => setAreaMin(e.target.value)} />
+        </label>
+        <label className="filter-item">
+          <span>Бюджет до (₽/час)</span>
+          <input type="number" min="1" placeholder="Например, 12000" value={priceMax} onChange={(e) => setPriceMax(e.target.value)} />
         </label>
         <label className="filter-item">
           <span>Сортировка</span>
@@ -2263,8 +2323,8 @@ function OwnerPage() {
     event.preventDefault();
     if (!owner) return;
     setMessage("");
-    if (venueForm.images.length < 3) {
-      setMessage("Добавьте минимум 3 фотографии площадки");
+    if (venueForm.images.length < 5) {
+      setMessage("Добавьте минимум 5 фотографий площадки");
       return;
     }
     if (!venueForm.region.trim() || !venueForm.city.trim() || !venueForm.category.trim()) {
@@ -2513,7 +2573,7 @@ function OwnerPage() {
   const nextAction = useMemo(() => {
     if (!owner) return "";
     if (owner.trialStatus === "expired") return "Пробный период завершен. Обратитесь в поддержку для продления доступа.";
-    if (ownerVenues.length === 0) return "Добавьте первую площадку: минимум 3 фото и подробное описание.";
+    if (ownerVenues.length === 0) return "Добавьте первую площадку: минимум 5 фото и подробное описание.";
     const pending = ownerRequests.filter((item) => item.status === "new").length;
     if (pending > 0) return `У вас ${pending} новых заявок. Рекомендуем ответить в течение 30 минут для лучшей конверсии.`;
     return "Следующий шаг: улучшайте карточки (фото, удобства, описание) для роста конверсии.";
@@ -2653,7 +2713,7 @@ function OwnerPage() {
                 />
               </label>
             </div>
-            <p className="muted">Фото добавлено: {venueForm.images.length} (минимум 3, максимум 20). Первое фото будет обложкой.</p>
+            <p className="muted">Фото добавлено: {venueForm.images.length} (минимум 5, максимум 20). Первое фото будет обложкой.</p>
             <div className="photo-preview-grid">
               {venueForm.images.map((image, index) => (
                 <article key={`${image}-${index}`} className="photo-preview-card">
@@ -2786,7 +2846,7 @@ function OwnerPage() {
                     Отклонить
                   </button>
                 </div>
-                <p className="muted">Текущий статус: {request.status}</p>
+                <p className="muted">Текущий статус: {ownerLeadStatusLabels[request.status]}</p>
               </article>
             ))}
             {message ? <p className={message.includes("Не удалось") || message.includes("ошибка") ? "error-note" : "ok"}>{message}</p> : null}
@@ -3128,7 +3188,7 @@ function AdminPanelPage() {
             <article key={request.id} className="admin-card">
               <div className="row-between">
                 <strong>{request.name} · {request.phone}</strong>
-                <span className="chip">{request.status}</span>
+                <span className="chip">{ownerLeadStatusLabels[request.status]}</span>
               </div>
               <p className="muted">{request.venueTitle} · {request.ownerName}</p>
               {request.comment ? <p>{request.comment}</p> : null}
@@ -3150,7 +3210,7 @@ function AdminPanelPage() {
             <article key={request.id} className="admin-card">
               <div className="row-between">
                 <strong>{request.name} · {request.phone}</strong>
-                <span className="chip">{request.status}</span>
+                <span className="chip">{supportStatusLabels[request.status]}</span>
               </div>
               <p className="muted">Страница: {request.page}</p>
               <p>{request.message}</p>

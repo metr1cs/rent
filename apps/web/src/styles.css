@@ -525,7 +525,7 @@ main { margin-top: 14px; display: grid; gap: 14px; }
 .catalog-filters {
   margin-top: 14px;
   display: grid;
-  grid-template-columns: 2fr 1fr;
+  grid-template-columns: 2fr 1fr 1fr auto;
   gap: 10px;
 }
 

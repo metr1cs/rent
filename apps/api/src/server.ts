@@ -485,6 +485,7 @@ const venueQuerySchema = z.object({
   date: z.string().optional(),
   capacity: z.coerce.number().int().positive().optional(),
   areaMin: z.coerce.number().int().positive().optional(),
+  priceMax: z.coerce.number().int().positive().optional(),
   sort: z.enum(["recommended", "price_asc", "price_desc", "rating_desc"]).optional(),
   parking: z.coerce.boolean().optional(),
   stage: z.coerce.boolean().optional(),
@@ -498,7 +499,7 @@ app.get("/api/venues", (req, res) => {
     return res.status(400).json({ message: "Invalid query" });
   }
 
-  const { q, category, region, date, capacity, areaMin, sort, parking, stage, late, instant } = parsed.data;
+  const { q, category, region, date, capacity, areaMin, priceMax, sort, parking, stage, late, instant } = parsed.data;
 
   const filtered = venues.filter((venue) => {
     const publishedPass = isVenuePublished(venue);
@@ -510,12 +511,13 @@ app.get("/api/venues", (req, res) => {
     const datePass = date ? venue.nextAvailableDates.includes(date) : true;
     const capacityPass = capacity ? venue.capacity >= capacity : true;
     const areaPass = areaMin ? venue.areaSqm >= areaMin : true;
+    const pricePass = priceMax ? venue.pricePerHour <= priceMax : true;
     const parkingPass = parking ? venue.amenities.includes("Парковка") : true;
     const stagePass = stage ? venue.amenities.includes("Сцена") : true;
     const latePass = late ? venue.cancellationPolicy.toLowerCase().includes("72") : true;
     const instantPass = instant ? venue.instantBooking : true;
 
-    return publishedPass && qPass && categoryPass && regionPass && datePass && capacityPass && areaPass && parkingPass && stagePass && latePass && instantPass;
+    return publishedPass && qPass && categoryPass && regionPass && datePass && capacityPass && areaPass && pricePass && parkingPass && stagePass && latePass && instantPass;
   });
 
   const sorted = [...filtered];
@@ -1088,7 +1090,7 @@ const ownerVenueSchema = z.object({
             .filter((item) => item.length >= 2)
         : value
     ),
-  images: z.array(z.string().url()).min(3)
+  images: z.array(z.string().url()).min(5)
 });
 
 const ownerVenueUpdateSchema = ownerVenueSchema;
@@ -1111,7 +1113,7 @@ app.get("/api/owner/dashboard", (req, res) => {
       Boolean(venue.title),
       Boolean(venue.description && venue.description.length >= 20),
       Boolean(venue.address),
-      venue.images.length >= 3,
+      venue.images.length >= 5,
       venue.amenities.length >= 4,
       venue.pricePerHour > 0,
       venue.capacity > 0,
@@ -1451,7 +1453,7 @@ app.post("/api/owner/venues", (req, res) => {
     })));
     const imageIssue = parsed.error.issues.find((issue) => issue.path.join(".") === "images");
     if (imageIssue) {
-      return res.status(400).json({ message: "Нужно добавить минимум 3 фото площадки" });
+      return res.status(400).json({ message: "Нужно добавить минимум 5 фото площадки" });
     }
     const firstIssue = parsed.error.issues[0];
     const fieldName = String(firstIssue?.path?.[0] ?? "");
