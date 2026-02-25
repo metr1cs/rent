@@ -1,4 +1,5 @@
 const apiBase = (process.env.API_BASE_URL || "http://localhost:8090").replace(/\/+$/, "");
+const readOnlyMode = process.env.SMOKE_READ_ONLY === "true";
 
 async function jsonFetch(url, init = {}) {
   const res = await fetch(url, init);
@@ -10,18 +11,30 @@ function assert(condition, message) {
   if (!condition) throw new Error(message);
 }
 
+async function assertApiHealth() {
+  const direct = await jsonFetch(`${apiBase}/health`);
+  if (direct.ok) return;
+  const prefixed = await jsonFetch(`${apiBase}/api/health`);
+  assert(prefixed.ok, "API health failed");
+}
+
 async function main() {
   const runStamp = Date.now();
   const runPhone = `+79${String(runStamp).slice(-9)}`;
   const runName = `Smoke Tester ${String(runStamp).slice(-4)}`;
 
-  const health = await jsonFetch(`${apiBase}/health`);
-  assert(health.ok, "API health failed");
+  await assertApiHealth();
 
   const venues = await jsonFetch(`${apiBase}/api/venues`);
   let venue = venues.ok && Array.isArray(venues.data) && venues.data.length > 0 ? venues.data[0] : null;
 
   if (!venue) {
+    if (readOnlyMode) {
+      console.log("Smoke OK (read-only):");
+      console.log("- no venues yet, trust mutations skipped");
+      return;
+    }
+
     const stamp = Date.now();
     const register = await jsonFetch(`${apiBase}/api/owner/register`, {
       method: "POST",
@@ -66,6 +79,15 @@ async function main() {
     });
     assert(createVenue.ok, "Failed to create venue for trust flow");
     venue = createVenue.data;
+  }
+
+  if (readOnlyMode) {
+    const visibleReviews = await jsonFetch(`${apiBase}/api/venues/${encodeURIComponent(venue.id)}/reviews`);
+    assert(visibleReviews.ok, "Failed to fetch venue reviews (read-only)");
+    console.log("Smoke OK (read-only):");
+    console.log(`- venue: ${venue.id}`);
+    console.log("- review endpoint available");
+    return;
   }
 
   const leadPayload = {

@@ -1,5 +1,6 @@
 const apiBase = (process.env.API_BASE_URL || "http://localhost:8090").replace(/\/+$/, "");
 const webBase = (process.env.WEB_BASE_URL || "http://localhost:4173").replace(/\/+$/, "");
+const readOnlyMode = process.env.SMOKE_READ_ONLY === "true";
 
 function categoryToSlug(value) {
   return encodeURIComponent(value.trim().toLowerCase().replace(/\s+/g, "-"));
@@ -13,8 +14,17 @@ async function assertOk(url, label) {
   return res;
 }
 
+async function assertApiHealth() {
+  const direct = await fetch(`${apiBase}/health`);
+  if (direct.ok) return;
+  const prefixed = await fetch(`${apiBase}/api/health`);
+  if (!prefixed.ok) {
+    throw new Error(`API health failed: ${prefixed.status} ${prefixed.statusText}`);
+  }
+}
+
 async function main() {
-  await assertOk(`${apiBase}/health`, "API health");
+  await assertApiHealth();
 
   const categoriesRes = await assertOk(`${apiBase}/api/categories`, "Categories");
   const categories = await categoriesRes.json();
@@ -30,6 +40,14 @@ async function main() {
   let venues = await venuesRes.json();
 
   if (!Array.isArray(venues) || venues.length === 0) {
+    if (readOnlyMode) {
+      await assertOk(`${webBase}/catalog`, "Web catalog route");
+      console.log("Smoke OK (read-only):");
+      console.log("- no venues yet, data creation skipped");
+      console.log("- checked routes: /catalog");
+      return;
+    }
+
     const stamp = Date.now();
     const register = await fetch(`${apiBase}/api/owner/register`, {
       method: "POST",

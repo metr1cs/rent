@@ -12,6 +12,8 @@
     "dev:web": "npm run dev -w apps/web",
     "sitemap:generate": "node scripts/generate-sitemap.mjs",
     "smoke:catalog": "node scripts/smoke-catalog-flow.mjs",
-    "smoke:trust": "node scripts/smoke-review-trust.mjs"
+    "smoke:trust": "node scripts/smoke-review-trust.mjs",
+    "smoke:all": "npm run smoke:catalog && npm run smoke:trust",
+    "qa:cycle": "npm run build && node scripts/qa-cycle.mjs"
   }
 }

@@ -44,3 +44,6 @@ jobs:
             pm2 restart vmestoru-api --update-env
             sudo systemctl reload nginx
             curl -fsS http://127.0.0.1:8090/api/health
+
+      - name: Post-deploy Smoke (Read Only)
+        run: SMOKE_READ_ONLY=true API_BASE_URL=https://vmestoru.ru WEB_BASE_URL=https://vmestoru.ru npm run smoke:all

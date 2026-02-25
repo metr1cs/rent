@@ -1,5 +1,10 @@
 # Release Checklist
 
+## Cycle Rule (mandatory)
+- [ ] After every implementation cycle, run `npm run qa:cycle`.
+- [ ] If any step fails, release is blocked until fix + rerun.
+- [ ] Record result in PR/issue: `build`, `smoke:catalog`, `smoke:trust`.
+
 ## Product/UI
 - [ ] Main user flows are stable.
 - [ ] Desktop and mobile layouts verified.
@@ -13,14 +18,13 @@
 - [ ] Favicon and manifest are accessible.
 
 ## Quality Gates
-- [ ] `npm run build`
-- [ ] `npm run smoke:catalog`
-- [ ] `npm run smoke:trust`
+- [ ] `npm run qa:cycle`
 - [ ] e2e subset for touched functionality
 - [ ] visual snapshots updated/approved
 
 ## Ops
 - [ ] Health checks pass after deploy (`/api/health`).
+- [ ] Post-deploy read-only smoke passed (`SMOKE_READ_ONLY=true npm run smoke:all`).
 - [ ] Alert channels configured.
 - [ ] Rollback command is ready.
 - [ ] Production environment approval granted.

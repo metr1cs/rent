@@ -44,8 +44,5 @@ jobs:
           cat /tmp/web.log || true
           exit 1
 
-      - name: Smoke Catalog
-        run: API_BASE_URL=http://localhost:8090 WEB_BASE_URL=http://localhost:4173 npm run smoke:catalog
-
-      - name: Smoke Trust
-        run: API_BASE_URL=http://localhost:8090 npm run smoke:trust
+      - name: Smoke All
+        run: API_BASE_URL=http://localhost:8090 WEB_BASE_URL=http://localhost:4173 npm run smoke:all
