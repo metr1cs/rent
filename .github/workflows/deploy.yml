@@ -14,6 +14,12 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.2'
+          tools: composer
+
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
@@ -22,6 +28,11 @@ jobs:
 
       - name: Install
         run: npm ci
+
+      - name: Install Laravel Dependencies
+        run: |
+          cd apps/api-laravel
+          composer install --no-interaction --prefer-dist --no-progress
 
       - name: Build
         run: npm run build
@@ -41,9 +52,13 @@ jobs:
             git pull --ff-only
             npm ci
             npm run build
-            pm2 restart vmestoru-api --update-env
+            cd apps/api-laravel
+            composer install --no-interaction --prefer-dist --no-progress
+            php artisan migrate --force
+            sudo systemctl restart vmestoru-api-laravel
             sudo systemctl reload nginx
-            curl -fsS http://127.0.0.1:8090/api/health
+            curl -fsS http://127.0.0.1:8090/health
+            cd /opt/vmestoru
 
       - name: Post-deploy Smoke (Read Only)
         run: SMOKE_READ_ONLY=true API_BASE_URL=https://vmestoru.ru WEB_BASE_URL=https://vmestoru.ru npm run smoke:all

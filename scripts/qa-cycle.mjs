@@ -1,12 +1,18 @@
 import { spawn } from "node:child_process";
+import { mkdir, open } from "node:fs/promises";
+import path from "node:path";
 
 const apiBase = process.env.API_BASE_URL || "http://localhost:8090";
 const webBase = process.env.WEB_BASE_URL || "http://localhost:4173";
 const timeoutMs = 60_000;
+const rootDir = process.cwd();
+const laravelDir = path.join(rootDir, "apps/api-laravel");
+const laravelSqlite = path.join(laravelDir, "database/database.sqlite");
 
-function startProcess(name, args) {
-  const child = spawn("npm", args, {
-    env: process.env,
+function startProcess(name, command, args, options = {}) {
+  const child = spawn(command, args, {
+    env: { ...process.env, ...(options.env || {}) },
+    cwd: options.cwd || rootDir,
     stdio: ["ignore", "pipe", "pipe"]
   });
 
@@ -15,6 +21,39 @@ function startProcess(name, args) {
   child.stderr.on("data", (chunk) => log.push(chunk.toString()));
 
   return { name, child, log };
+}
+
+async function runCommand(command, args, options = {}) {
+  await new Promise((resolve, reject) => {
+    const child = spawn(command, args, {
+      env: { ...process.env, ...(options.env || {}) },
+      cwd: options.cwd || rootDir,
+      stdio: "inherit"
+    });
+    child.on("exit", (code) => {
+      if (code === 0) resolve();
+      else reject(new Error(`${command} ${args.join(" ")} failed with code ${code}`));
+    });
+  });
+}
+
+async function prepareLaravelSqliteDatabase() {
+  await mkdir(path.dirname(laravelSqlite), { recursive: true });
+  const handle = await open(laravelSqlite, "a");
+  await handle.close();
+  await runCommand(
+    "php",
+    ["artisan", "migrate:fresh", "--seed"],
+    {
+      cwd: laravelDir,
+      env: {
+        DB_CONNECTION: "sqlite",
+        DB_DATABASE: laravelSqlite,
+        ADMIN_PANEL_LOGIN: process.env.ADMIN_PANEL_LOGIN || "Kaktyz12",
+        ADMIN_PANEL_PASSWORD: process.env.ADMIN_PANEL_PASSWORD || "DontPussy1221"
+      }
+    }
+  );
 }
 
 async function waitForServices() {
@@ -49,6 +88,23 @@ async function runSmoke() {
   });
 }
 
+async function runCriticalE2E() {
+  await new Promise((resolve, reject) => {
+    const child = spawn(
+      "npm",
+      ["run", "e2e:critical"],
+      {
+        env: { ...process.env, API_BASE_URL: apiBase, WEB_BASE_URL: webBase },
+        stdio: "inherit"
+      }
+    );
+    child.on("exit", (code) => {
+      if (code === 0) resolve();
+      else reject(new Error(`e2e:critical failed with code ${code}`));
+    });
+  });
+}
+
 function stopProcess(proc) {
   if (proc.child.exitCode !== null) return;
   proc.child.kill("SIGTERM");
@@ -62,12 +118,28 @@ function printProcessLogs(proc) {
 }
 
 async function main() {
-  const api = startProcess("api", ["run", "start", "-w", "apps/api"]);
-  const web = startProcess("web", ["run", "start", "-w", "apps/web"]);
+  await prepareLaravelSqliteDatabase();
+
+  const api = startProcess(
+    "api",
+    "php",
+    ["artisan", "serve", "--host=127.0.0.1", "--port=8090"],
+    {
+      cwd: laravelDir,
+      env: {
+        DB_CONNECTION: "sqlite",
+        DB_DATABASE: laravelSqlite,
+        ADMIN_PANEL_LOGIN: process.env.ADMIN_PANEL_LOGIN || "Kaktyz12",
+        ADMIN_PANEL_PASSWORD: process.env.ADMIN_PANEL_PASSWORD || "DontPussy1221"
+      }
+    }
+  );
+  const web = startProcess("web", "npm", ["run", "preview", "-w", "apps/web", "--", "--host", "127.0.0.1", "--port", "4173"]);
 
   try {
     await waitForServices();
     await runSmoke();
+    await runCriticalE2E();
     console.log("QA cycle passed");
   } catch (error) {
     printProcessLogs(api);

@@ -13,6 +13,13 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: "8.2"
+          extensions: mbstring, pdo, pdo_sqlite
+          tools: composer
+
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
@@ -22,14 +29,30 @@ jobs:
       - name: Install Dependencies
         run: npm ci
 
+      - name: Install Laravel Dependencies
+        run: |
+          cd apps/api-laravel
+          composer install --no-interaction --prefer-dist --no-progress
+
+      - name: Laravel Tests
+        run: npm run test:api:laravel
+
       - name: Build
         run: npm run build
 
-      - name: Start API
-        run: nohup npm run start -w apps/api > /tmp/api.log 2>&1 &
+      - name: Prepare Laravel DB
+        run: |
+          cd apps/api-laravel
+          cp .env.example .env
+          php artisan key:generate
+          touch database/database.sqlite
+          DB_CONNECTION=sqlite DB_DATABASE=database/database.sqlite php artisan migrate:fresh --seed
+
+      - name: Start API (Laravel)
+        run: nohup bash -lc 'cd apps/api-laravel && DB_CONNECTION=sqlite DB_DATABASE=database/database.sqlite ADMIN_PANEL_LOGIN=${{ secrets.ADMIN_PANEL_LOGIN }} ADMIN_PANEL_PASSWORD=${{ secrets.ADMIN_PANEL_PASSWORD }} php artisan serve --host=127.0.0.1 --port=8090' > /tmp/api.log 2>&1 &
 
       - name: Start Web
-        run: nohup npm run start -w apps/web > /tmp/web.log 2>&1 &
+        run: nohup npm run preview -w apps/web -- --host 127.0.0.1 --port 4173 > /tmp/web.log 2>&1 &
 
       - name: Wait For Services
         run: |
@@ -46,3 +69,6 @@ jobs:
 
       - name: Smoke All
         run: API_BASE_URL=http://localhost:8090 WEB_BASE_URL=http://localhost:4173 npm run smoke:all
+
+      - name: E2E Critical
+        run: API_BASE_URL=http://localhost:8090 WEB_BASE_URL=http://localhost:4173 npm run e2e:critical

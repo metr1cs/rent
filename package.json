@@ -7,13 +7,16 @@
     "apps/web"
   ],
   "scripts": {
-    "build": "npm run build -w apps/api && npm run build -w apps/web",
-    "dev:api": "npm run dev -w apps/api",
+    "build": "npm run build -w apps/web",
+    "dev:api": "npm run dev:api:laravel",
+    "dev:api:laravel": "cd apps/api-laravel && php artisan serve --host 0.0.0.0 --port ${PORT:-8090}",
+    "test:api:laravel": "cd apps/api-laravel && php artisan test",
     "dev:web": "npm run dev -w apps/web",
     "sitemap:generate": "node scripts/generate-sitemap.mjs",
     "smoke:catalog": "node scripts/smoke-catalog-flow.mjs",
     "smoke:trust": "node scripts/smoke-review-trust.mjs",
     "smoke:all": "npm run smoke:catalog && npm run smoke:trust",
+    "e2e:critical": "node scripts/e2e-critical.mjs",
     "qa:cycle": "npm run build && node scripts/qa-cycle.mjs"
   }
 }

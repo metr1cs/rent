@@ -2,7 +2,8 @@
 
 Новый проект с чистого листа:
 - `apps/web`: premium-сайт аренды площадок для мероприятий
-- `apps/api`: API каталога, карточек площадок, заявок, кабинета арендодателя и mock-оплаты подписки 2000 RUB / 30 дней
+- `apps/api-laravel`: новый API на Laravel + MySQL (основной)
+- `apps/api`: legacy API на Node.js (оставлен временно для миграции)
 - `ai_team`: система AI-агентов и автообучения (оркестратор, scorer, playbooks)
 
 ## Основная логика продукта
@@ -11,11 +12,26 @@
 - Поток арендодателя: регистрация -> оплата подписки (mock 2000 RUB) -> добавление нескольких площадок
 - Поддержка светлой/темной темы, анимаций и AI-поиска
 
-## Запуск API/Web
+## Запуск API/Web (Laravel)
 ```bash
 npm install
+cd apps/api-laravel
+cp .env.example .env
+# укажите DB_* и ADMIN_PANEL_LOGIN/ADMIN_PANEL_PASSWORD
+php artisan key:generate
+php artisan migrate --seed
+php artisan serve --host 0.0.0.0 --port 8090
+
+# в отдельном терминале
+cd /path/to/repo
 npm run dev:api
 npm run dev:web
+```
+
+Локальный прогон автопроверок:
+```bash
+npm run test:api:laravel
+npm run qa:cycle
 ```
 
 ## Telegram-уведомления на телефон
@@ -97,6 +113,9 @@ npm run build
 - Production deploy workflow: `.github/workflows/deploy.yml`
 - SEO strategy/forecast: `docs/SEO_STRATEGY_2026_Q2.md`
 - Observability alerts: `docs/OBSERVABILITY_ALERTS.md`
+- Anti-fraud deploy checklist: `docs/ANTIFRAUD_DEPLOY_CHECKLIST.md`
+- Moderation SLA: `docs/ADMIN_MODERATION_SLA.md`
+- Legal public pack: `docs/LEGAL_PUBLIC_PACK.md`
 
 ## Хранение данных API (персистентность)
 - API сохраняет runtime-данные в JSON-файл между рестартами.
@@ -110,6 +129,11 @@ DATA_STORE_FILE=/absolute/path/to/store.json npm run start -w apps/api
 ```bash
 npm run smoke:catalog
 npm run smoke:trust
+```
+
+## Critical E2E
+```bash
+npm run e2e:critical
 ```
 
 ## Поддержка и управление площадками
