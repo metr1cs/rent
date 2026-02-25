@@ -18,8 +18,13 @@ const adminPanelPassword = process.env.ADMIN_PANEL_PASSWORD ?? "DontPussy1221";
 const autoBillingNotifierEnabled = process.env.AUTO_BILLING_NOTIFIER === "true";
 const billingNotifierIntervalMinutes = Number(process.env.BILLING_NOTIFIER_INTERVAL_MINUTES ?? 60);
 const reminderSendRegistry = new Set<string>();
+const leadSlaMinutes = Math.max(5, Number(process.env.LEAD_SLA_MINUTES ?? 30));
+const leadReminderIntervalMinutes = Math.max(3, Number(process.env.LEAD_REMINDER_INTERVAL_MINUTES ?? 10));
+const leadReminderCooldownMinutes = Math.max(10, Number(process.env.LEAD_REMINDER_COOLDOWN_MINUTES ?? 30));
+const leadReminderSendRegistry = new Map<string, number>();
 const adminSessions = new Map<string, { moderator: string; expiresAt: number }>();
 const adminSessionTtlMs = 8 * 60 * 60 * 1000;
+const rateLimitBuckets = new Map<string, { count: number; resetAt: number }>();
 
 type FrontendErrorEvent = {
   id: string;
@@ -64,6 +69,40 @@ function percentile(values: number[], ratio: number): number {
 
 function safeEndpointKey(pathname: string): string {
   return pathname.replace(/[0-9]+/g, ":id");
+}
+
+function getClientIp(req: Request): string {
+  const forwarded = String(req.headers["x-forwarded-for"] ?? "").split(",")[0].trim();
+  if (forwarded) return forwarded;
+  return req.ip || req.socket.remoteAddress || "unknown";
+}
+
+function consumeRateLimit(req: Request, key: string, limit: number, windowMs: number): boolean {
+  const now = Date.now();
+  const bucketKey = `${key}:${getClientIp(req)}`;
+  const current = rateLimitBuckets.get(bucketKey);
+  if (!current || now > current.resetAt) {
+    rateLimitBuckets.set(bucketKey, { count: 1, resetAt: now + windowMs });
+    return true;
+  }
+  if (current.count >= limit) return false;
+  current.count += 1;
+  rateLimitBuckets.set(bucketKey, current);
+  return true;
+}
+
+function dataUrlSizeBytes(value: string): number {
+  const base64 = value.split(",")[1] ?? "";
+  if (!base64) return 0;
+  return Math.floor((base64.length * 3) / 4);
+}
+
+function isValidImagePayload(image: string): boolean {
+  const value = image.trim();
+  if (value.startsWith("data:image/")) {
+    return dataUrlSizeBytes(value) <= 8 * 1024 * 1024;
+  }
+  return /^https?:\/\/.+/i.test(value);
 }
 
 app.use(cors());
@@ -311,6 +350,43 @@ function runBillingReminderDispatch(): { sent: number; reminders3Days: number; r
   });
 
   return { sent, reminders3Days, reminders1Day, debtors };
+}
+
+function runLeadSlaReminderDispatch(): { sent: number; queued: number } {
+  const now = Date.now();
+  let sent = 0;
+  let queued = 0;
+
+  leadRequests.forEach((request) => {
+    if (request.status !== "new") return;
+    const createdAtMs = new Date(request.createdAt).getTime();
+    const ageMinutes = Math.floor((now - createdAtMs) / 60000);
+    if (ageMinutes < leadSlaMinutes) return;
+
+    queued += 1;
+    const lastSentAt = leadReminderSendRegistry.get(request.id) ?? 0;
+    if (now - lastSentAt < leadReminderCooldownMinutes * 60 * 1000) return;
+
+    const venue = venues.find((item) => item.id === request.venueId);
+    if (!venue) return;
+    const owner = owners.find((item) => item.id === venue.ownerId);
+
+    leadReminderSendRegistry.set(request.id, now);
+    sent += 1;
+    void sendTelegramNotification(
+      [
+        "SLA-напоминание по заявке",
+        `Заявка: ${request.id}`,
+        `Площадка: ${venue.title}`,
+        `Арендодатель: ${owner?.name ?? "-"}`,
+        `Контакт арендатора: ${request.name}, ${request.phone}`,
+        `Возраст заявки: ${ageMinutes} мин`,
+        `SLA: ${leadSlaMinutes} мин`,
+      ].join("\n")
+    );
+  });
+
+  return { sent, queued };
 }
 
 app.get("/health", (_req, res) => {
@@ -624,6 +700,10 @@ function evaluateReviewRisk(venueId: string, payload: { rating: number; text: st
 }
 
 app.post("/api/venues/:id/reviews", (req, res) => {
+  if (!consumeRateLimit(req, "reviews", 5, 30 * 60 * 1000)) {
+    return res.status(429).json({ message: "Слишком много попыток оставить отзыв. Попробуйте позже." });
+  }
+
   const venue = venues.find((item) => item.id === req.params.id);
   if (!venue) return res.status(404).json({ message: "Venue not found" });
 
@@ -641,6 +721,17 @@ app.post("/api/venues/:id/reviews", (req, res) => {
     return res.status(403).json({
       message: "Отзыв доступен только после подтвержденной заявки на площадку"
     });
+  }
+
+  const normalizedPhone = normalizePhone(parsed.data.requesterPhone);
+  const recentReviewDuplicate = reviews.find((item) => {
+    if (item.venueId !== venue.id) return false;
+    if (normalizePhone(item.requesterPhone) !== normalizedPhone) return false;
+    const ageMs = Date.now() - new Date(item.createdAt).getTime();
+    return ageMs < 7 * 24 * 60 * 60 * 1000;
+  });
+  if (recentReviewDuplicate) {
+    return res.status(409).json({ message: "Отзыв по этой заявке уже был отправлен недавно." });
   }
 
   const risk = evaluateReviewRisk(venue.id, parsed.data);
@@ -783,6 +874,11 @@ app.post("/api/monitor/frontend-error", (req, res) => {
 });
 
 app.post("/api/support/requests", (req, res) => {
+  if (!consumeRateLimit(req, "support", 6, 10 * 60 * 1000)) {
+    monitoringState.support.failed += 1;
+    return res.status(429).json({ message: "Слишком много запросов в поддержку. Попробуйте через 10 минут." });
+  }
+
   const parsed = supportRequestSchema.safeParse(req.body);
   if (!parsed.success) {
     return res.status(400).json({
@@ -798,6 +894,18 @@ app.post("/api/support/requests", (req, res) => {
   if (!telegramBotToken || !supportTelegramChatId.trim()) {
     monitoringState.support.failed += 1;
     return res.status(503).json({ message: "Канал поддержки временно недоступен. Свяжитесь по номеру +7 (995) 592-62-60." });
+  }
+
+  const normalizedPhone = normalizePhone(parsed.data.phone || "");
+  const duplicate = supportRequests.find((item) => {
+    const samePhone = normalizePhone(item.phone) === normalizedPhone;
+    const sameMessage = item.message.trim().toLowerCase() === normalizedMessage.toLowerCase();
+    const ageMs = Date.now() - new Date(item.createdAt).getTime();
+    return samePhone && sameMessage && ageMs < 10 * 60 * 1000;
+  });
+  if (duplicate) {
+    monitoringState.support.failed += 1;
+    return res.status(409).json({ message: "Похожее обращение уже отправлено недавно. Мы уже в работе." });
   }
 
   const createdAt = new Date().toISOString();
@@ -831,11 +939,26 @@ app.post("/api/support/requests", (req, res) => {
 });
 
 app.post("/api/venues/:id/requests", (req, res) => {
+  if (!consumeRateLimit(req, "lead", 10, 10 * 60 * 1000)) {
+    return res.status(429).json({ message: "Слишком много заявок за короткое время. Попробуйте позже." });
+  }
+
   const venue = venues.find((item) => item.id === req.params.id);
   if (!venue) return res.status(404).json({ message: "Venue not found" });
 
   const parsed = leadSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ message: "Invalid request payload" });
+
+  const normalizedPhone = normalizePhone(parsed.data.phone);
+  const duplicateLead = leadRequests.find((item) => {
+    if (item.venueId !== venue.id) return false;
+    if (normalizePhone(item.phone) !== normalizedPhone) return false;
+    const ageMs = Date.now() - new Date(item.createdAt).getTime();
+    return ageMs < 20 * 60 * 1000 && ["new", "in_progress", "call_scheduled"].includes(item.status);
+  });
+  if (duplicateLead) {
+    return res.status(409).json({ message: "Заявка на эту площадку уже отправлена недавно. Проверьте статус в течение 20 минут." });
+  }
 
   const created = {
     id: `L-${leadRequests.length + 1}`,
@@ -1089,8 +1212,15 @@ const ownerVenueSchema = z.object({
             .map((item) => item.trim())
             .filter((item) => item.length >= 2)
         : value
-    ),
-  images: z.array(z.string().url()).min(5)
+    )
+    .refine((items) => items.length >= 3, { message: "Укажите минимум 3 удобства" }),
+  images: z
+    .array(z.string().min(8))
+    .min(5)
+    .max(20)
+    .refine((items) => items.every((image) => isValidImagePayload(image)), {
+      message: "Некорректный формат фото или размер более 8 МБ",
+    })
 });
 
 const ownerVenueUpdateSchema = ownerVenueSchema;
@@ -1606,6 +1736,14 @@ app.post("/api/ai/search", (req, res) => {
 const onServerStarted = () => {
   const logHost = host ?? "localhost";
   console.log(`API running on http://${logHost}:${port}`);
+  setInterval(() => {
+    const result = runLeadSlaReminderDispatch();
+    if (result.sent > 0) {
+      console.log(`Lead SLA reminders sent: ${result.sent} (queued: ${result.queued})`);
+    }
+  }, leadReminderIntervalMinutes * 60 * 1000);
+  console.log(`Lead SLA reminder enabled, interval ${leadReminderIntervalMinutes} min, SLA ${leadSlaMinutes} min`);
+
   if (autoBillingNotifierEnabled) {
     const intervalMs = Math.max(5, billingNotifierIntervalMinutes) * 60 * 1000;
     setInterval(() => {
