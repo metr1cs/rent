@@ -3,6 +3,7 @@ import { createRoot } from "react-dom/client";
 import { BrowserRouter, Link, Route, Routes, useLocation, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { DayPicker } from "react-day-picker";
 import "react-day-picker/style.css";
+import { RUSSIAN_CITY_NAMES } from "../../../shared/russianCities.mjs";
 import "./styles.css";
 
 type Category = { id: string; name: string; featured: boolean };
@@ -265,6 +266,8 @@ const CATEGORY_ART_ORDER = [
   "Шоурум / pop-up",
   "Универсальный зал",
 ];
+
+const SEO_CITY_INDEX = RUSSIAN_CITY_NAMES;
 
 const SEO_CITY_PRIORITY = [
   "Москва",
@@ -1599,7 +1602,7 @@ function CityPage() {
       }
       const categories = (await categoriesRes.json()) as Category[];
       const venues = (await venuesRes.json()) as Venue[];
-      const allRegions = [...new Set([...SEO_CITY_PRIORITY, ...venues.map((item) => item.region)])];
+      const allRegions = [...new Set([...SEO_CITY_INDEX, ...venues.map((item) => item.region)])];
       const resolvedRegion = allRegions.find((item) => regionToSlug(item) === citySlug) ?? "";
       setRegionName(resolvedRegion);
       if (!resolvedRegion) {
@@ -1811,7 +1814,7 @@ function CategoryPage() {
       }
 
       const resolvedRegion = citySlug
-        ? [...new Set([...SEO_CITY_PRIORITY, ...universeData.map((item) => item.region)])].find((item) => regionToSlug(item) === citySlug) ?? ""
+        ? [...new Set([...SEO_CITY_INDEX, ...universeData.map((item) => item.region)])].find((item) => regionToSlug(item) === citySlug) ?? ""
         : "";
       setLockedRegion(resolvedRegion);
       if (citySlug) setRegion(resolvedRegion);

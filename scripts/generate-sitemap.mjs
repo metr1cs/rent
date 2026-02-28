@@ -1,5 +1,6 @@
 import fs from "node:fs/promises";
 import path from "node:path";
+import { RUSSIAN_CITY_NAMES } from "../shared/russianCities.mjs";
 
 const siteUrl = "https://vmestoru.ru";
 const today = new Date().toISOString().slice(0, 10);
@@ -8,35 +9,7 @@ const root = process.cwd();
 const dataTsPath = path.join(root, "apps/api/src/data.ts");
 const sitemapPath = path.join(root, "apps/web/public/sitemap.xml");
 
-const cityNames = [
-  "Москва",
-  "Санкт-Петербург",
-  "Новосибирск",
-  "Екатеринбург",
-  "Казань",
-  "Нижний Новгород",
-  "Челябинск",
-  "Самара",
-  "Омск",
-  "Ростов-на-Дону",
-  "Уфа",
-  "Красноярск",
-  "Воронеж",
-  "Пермь",
-  "Волгоград",
-  "Краснодар",
-  "Саратов",
-  "Тюмень",
-  "Тольятти",
-  "Ижевск",
-  "Барнаул",
-  "Ульяновск",
-  "Иркутск",
-  "Владивосток",
-  "Сочи",
-  "Калининград",
-  "Ухта",
-];
+const cityNames = RUSSIAN_CITY_NAMES;
 
 function slugify(value) {
   return encodeURIComponent(value.trim().toLowerCase().replace(/\s+/g, "-"));
