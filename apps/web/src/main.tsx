@@ -1528,6 +1528,20 @@ function CityPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
+  const cityActiveCategories = useMemo(() => categoryCards.filter((item) => item.count > 0), [categoryCards]);
+  const cityTopCategoryNames = cityActiveCategories.slice(0, 3).map((item) => item.name);
+  const cityCategorySummary = cityTopCategoryNames.length > 0 ? cityTopCategoryNames.join(", ") : "лофты, банкетные залы и студии";
+  const citySeoLead = regionName
+    ? `VmestoRu формирует посадочную страницу по запросам аренды площадок в ${regionName}. Сейчас здесь уже видны категории с реальным спросом: ${cityCategorySummary}.`
+    : "VmestoRu собирает предложения по городам России и готовит посадочные страницы под локальный спрос.";
+  const citySeoPoints = [
+    regionName ? `Страница заточена под локальный спрос в ${regionName} и помогает быстро перейти к нужному формату.` : "Страница заточена под локальный спрос и помогает быстро перейти к нужному формату.",
+    cityActiveCategories.length > 0
+      ? `Сейчас доступно ${cityActiveCategories.length} категорий с активными карточками, приоритет у самых востребованных сценариев.`
+      : "Мы уже открыли индексируемую страницу и готовим первые карточки площадок по приоритетным категориям.",
+    "Для роста выдачи дальше эта страница будет усиливаться новыми карточками, отзывами и локальными сценариями бронирования.",
+  ];
+
   useEffect(() => {
     void bootstrap();
   }, [citySlug]);
@@ -1537,7 +1551,9 @@ function CityPage() {
     const path = `/city/${citySlug}`;
     applySeo({
       title: `${regionName || "Город"} — аренда площадок по категориям | VmestoRu`,
-      description: `Каталог площадок по категориям в городе ${regionName || "..."}. Выбирайте формат и переходите к релевантным локациям.`,
+      description: regionName
+        ? `Аренда площадок в ${regionName}: ${cityCategorySummary}. Сравнивайте форматы, переходите в категории и выбирайте релевантные локации под мероприятия.`
+        : `Каталог площадок по категориям в городе ${regionName || "..."}. Выбирайте формат и переходите к релевантным локациям.`,
       path,
       noindex: !regionName,
       jsonLd: [
@@ -1548,11 +1564,26 @@ function CityPage() {
             "@type": "CollectionPage",
             name: `Каталог площадок: ${regionName || "Город"}`,
             url: `${SITE_URL}${path}`,
+            description: citySeoLead,
+          },
+        },
+        {
+          id: "city-category-list",
+          payload: {
+            "@context": "https://schema.org",
+            "@type": "ItemList",
+            name: `Категории площадок в ${regionName || "городе"}`,
+            itemListElement: cityActiveCategories.slice(0, 8).map((item, index) => ({
+              "@type": "ListItem",
+              position: index + 1,
+              name: item.name,
+              url: `${SITE_URL}/category/${categoryToSlug(item.name)}/${citySlug}`,
+            })),
           },
         },
       ],
     });
-  }, [citySlug, regionName, categoryCards.length]);
+  }, [citySlug, regionName, cityCategorySummary, citySeoLead, cityActiveCategories]);
 
   async function bootstrap(): Promise<void> {
     if (!citySlug) return;
@@ -1601,6 +1632,19 @@ function CityPage() {
     <section className="section glass reveal-on-scroll">
       <Breadcrumbs items={[{ label: "Главная", to: "/" }, { label: "Каталог", to: "/catalog" }, { label: regionName || "Город" }]} />
       <h1>Площадки в городе: <span className="grad">{regionName || "..."}</span></h1>
+      {!loading && !error && regionName ? (
+        <div className="seo-copy-block">
+          <p className="seo-copy-lead">{citySeoLead}</p>
+          <div className="info-grid seo-copy-grid">
+            {citySeoPoints.map((point) => (
+              <div key={point}>
+                <strong>Локальный спрос</strong>
+                <p>{point}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      ) : null}
       {loading ? <p className="muted">Загрузка...</p> : null}
       {!loading && error ? <p className="error-note">{error}</p> : null}
       {!loading && !error ? (
@@ -1645,6 +1689,38 @@ function CategoryPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
+  const canonicalCategoryVenues = useMemo(
+    () => (lockedRegion ? categoryUniverse.filter((item) => item.region === lockedRegion) : categoryUniverse),
+    [categoryUniverse, lockedRegion],
+  );
+  const categorySeoStats = useMemo(() => {
+    if (canonicalCategoryVenues.length === 0) {
+      return { minPrice: 0, maxCapacity: 0, avgArea: 0, topRegions: [] as string[] };
+    }
+    const prices = canonicalCategoryVenues.map((item) => item.pricePerHour);
+    const capacities = canonicalCategoryVenues.map((item) => item.capacity);
+    const avgArea = Math.round(canonicalCategoryVenues.reduce((sum, item) => sum + item.areaSqm, 0) / canonicalCategoryVenues.length);
+    const topRegions = [...new Set(canonicalCategoryVenues.map((item) => item.region))].slice(0, 3);
+    return {
+      minPrice: Math.min(...prices),
+      maxCapacity: Math.max(...capacities),
+      avgArea,
+      topRegions,
+    };
+  }, [canonicalCategoryVenues]);
+  const categorySeoLead = categoryName
+    ? `${categoryName}${lockedRegion ? ` в ${lockedRegion}` : " по России"} на VmestoRu: ${canonicalCategoryVenues.length > 0 ? `от ${formatRub(categorySeoStats.minPrice)} ₽/час, до ${categorySeoStats.maxCapacity} гостей и в среднем ${categorySeoStats.avgArea} м2.` : "мы уже держим страницу открытой для индексации и заполняем ее новыми карточками."}`
+    : "Категория площадок загружается.";
+  const categorySeoPoints = [
+    canonicalCategoryVenues.length > 0
+      ? `В подборке ${canonicalCategoryVenues.length} площадок, поэтому эта страница закрывает и частотные, и уточняющие запросы.`
+      : "Страница уже готова к индексации и будет усиливаться карточками по мере подключения арендодателей.",
+    categorySeoStats.topRegions.length > 0
+      ? `Основной спрос сейчас закрывают города: ${categorySeoStats.topRegions.join(", ")}.`
+      : "Мы приоритизируем крупные города, чтобы быстро закрывать коммерческий спрос по выдаче.",
+    "Фильтры, рейтинг, вместимость и площадь дают странице коммерческий интент и помогают удерживать пользователя до заявки.",
+  ];
+
   useEffect(() => {
     setQuery(searchParams.get("q") ?? "");
     setRegion(citySlug ? "" : (searchParams.get("region") ?? ""));
@@ -1665,7 +1741,10 @@ function CategoryPage() {
     void trackEvent("category_open", { category: categoryName, source: "direct" });
     applySeo({
       title: `${categoryName}${titleRegionSuffix} — аренда площадок | VmestoRu`,
-      description: `Подбор площадок категории «${categoryName}»${descriptionRegionSuffix}: сравнивайте рейтинг, цену и доступность в городах России.`,
+      description:
+        canonicalCategoryVenues.length > 0
+          ? `Подбор площадок категории «${categoryName}»${descriptionRegionSuffix}: от ${formatRub(categorySeoStats.minPrice)} ₽/час, до ${categorySeoStats.maxCapacity} гостей, средняя площадь ${categorySeoStats.avgArea} м2.`
+          : `Подбор площадок категории «${categoryName}»${descriptionRegionSuffix}: сравнивайте рейтинг, цену и доступность в городах России.`,
       path: basePath,
       noindex: hasSeoFilters || (citySlug ? !lockedRegion : false),
       jsonLd: [
@@ -1693,9 +1772,23 @@ function CategoryPage() {
             ],
           },
         },
+        {
+          id: "category-item-list",
+          payload: {
+            "@context": "https://schema.org",
+            "@type": "ItemList",
+            name: `${categoryName}${titleRegionSuffix} — лучшие площадки`,
+            itemListElement: canonicalCategoryVenues.slice(0, 10).map((item, index) => ({
+              "@type": "ListItem",
+              position: index + 1,
+              name: item.title,
+              url: `${SITE_URL}/venue/${item.id}`,
+            })),
+          },
+        },
       ],
     });
-  }, [categoryName, slug, citySlug, lockedRegion, query, capacity, areaMin, priceMax, sort, region]);
+  }, [categoryName, slug, citySlug, lockedRegion, query, capacity, areaMin, priceMax, sort, region, canonicalCategoryVenues, categorySeoStats, titleRegionSuffix, descriptionRegionSuffix]);
 
   async function loadCategory(): Promise<void> {
     if (!slug) return;
@@ -1798,6 +1891,19 @@ function CategoryPage() {
       <h1>
         Категория: <span className="grad">{categoryName || "..."}{headingSuffix}</span>
       </h1>
+      {!loading && !error && categoryName ? (
+        <div className="seo-copy-block">
+          <p className="seo-copy-lead">{categorySeoLead}</p>
+          <div className="info-grid seo-copy-grid">
+            {categorySeoPoints.map((point) => (
+              <div key={point}>
+                <strong>Коммерческий интент</strong>
+                <p>{point}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      ) : null}
       <form className="search-grid" onSubmit={applyFilters}>
         <label className="filter-item">
           <span>Поиск по площадкам</span>

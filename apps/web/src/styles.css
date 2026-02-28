@@ -1184,6 +1184,32 @@ input[type="number"] {
 
 .info-grid p { margin: 4px 0 0; color: var(--muted); }
 
+.seo-copy-block {
+  margin-top: 14px;
+  padding: 14px;
+  border: 1px solid color-mix(in oklab, var(--brand-a) 18%, var(--line));
+  border-radius: 18px;
+  background:
+    linear-gradient(145deg, color-mix(in oklab, var(--brand-a) 10%, transparent), transparent 58%),
+    linear-gradient(180deg, color-mix(in oklab, var(--surface-soft) 92%, transparent), color-mix(in oklab, var(--surface) 94%, transparent));
+}
+
+.seo-copy-lead {
+  margin: 0;
+  font-size: 15px;
+  line-height: 1.6;
+  color: var(--text);
+}
+
+.seo-copy-grid {
+  margin-top: 12px;
+}
+
+.seo-copy-grid > div strong {
+  display: inline-block;
+  margin-bottom: 4px;
+}
+
 .phone-box {
   margin-top: 10px;
   border: 1px solid var(--line);
