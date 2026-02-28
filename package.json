@@ -7,7 +7,7 @@
     "apps/web"
   ],
   "scripts": {
-    "build": "npm run build -w apps/web",
+    "build": "npm run sitemap:generate && npm run build -w apps/web && node scripts/prerender-seo.mjs",
     "dev:api": "npm run dev:api:laravel",
     "dev:api:laravel": "cd apps/api-laravel && php artisan serve --host 0.0.0.0 --port ${PORT:-8090}",
     "test:api:laravel": "cd apps/api-laravel && php artisan test",
