@@ -266,6 +266,36 @@ const CATEGORY_ART_ORDER = [
   "Универсальный зал",
 ];
 
+const SEO_CITY_PRIORITY = [
+  "Москва",
+  "Санкт-Петербург",
+  "Новосибирск",
+  "Екатеринбург",
+  "Казань",
+  "Нижний Новгород",
+  "Челябинск",
+  "Самара",
+  "Омск",
+  "Ростов-на-Дону",
+  "Уфа",
+  "Красноярск",
+  "Воронеж",
+  "Пермь",
+  "Волгоград",
+  "Краснодар",
+  "Саратов",
+  "Тюмень",
+  "Тольятти",
+  "Ижевск",
+  "Барнаул",
+  "Ульяновск",
+  "Иркутск",
+  "Владивосток",
+  "Сочи",
+  "Калининград",
+  "Ухта",
+];
+
 const OWNER_POPULAR_AMENITIES = [
   "Wi-Fi",
   "Проектор",
@@ -683,7 +713,7 @@ function HomePage() {
   const [aiResult, setAiResult] = useState<Venue[]>([]);
   const [aiMessage, setAiMessage] = useState("");
 
-  const regions = useMemo(() => [...new Set(allVenues.map((item) => item.region))], [allVenues]);
+  const regions = useMemo(() => [...new Set([...SEO_CITY_PRIORITY, ...allVenues.map((item) => item.region)])], [allVenues]);
   const homeCategoryCards = useMemo(
     () =>
       categories
@@ -809,7 +839,7 @@ function HomePage() {
                 name: "Есть ли пробный период для новых арендодателей?",
                 acceptedAnswer: {
                   "@type": "Answer",
-                  text: "Да, новые арендодатели получают бесплатный доступ на 3 месяца с момента регистрации.",
+                  text: "Да, новые арендодатели получают бесплатный доступ на 6 месяцев с момента регистрации.",
                 },
               },
               {
@@ -1247,7 +1277,7 @@ function HomePage() {
           </article>
           <article className="completeness-item">
             <strong>Что получает новый арендодатель?</strong>
-            <p>3 месяца бесплатного доступа к публикации площадок и работе с входящими заявками.</p>
+            <p>6 месяцев бесплатного доступа к публикации площадок и работе с входящими заявками.</p>
           </article>
           <article className="completeness-item">
             <strong>Куда писать в поддержку?</strong>
@@ -1331,7 +1361,7 @@ function CatalogPage() {
     }
   }
 
-  const regions = useMemo(() => [...new Set(venues.map((item) => item.region))], [venues]);
+  const regions = useMemo(() => [...new Set([...SEO_CITY_PRIORITY, ...venues.map((item) => item.region)])], [venues]);
 
   function resetCatalogFilters(): void {
     setQuery("");
@@ -1509,7 +1539,7 @@ function CityPage() {
       title: `${regionName || "Город"} — аренда площадок по категориям | VmestoRu`,
       description: `Каталог площадок по категориям в городе ${regionName || "..."}. Выбирайте формат и переходите к релевантным локациям.`,
       path,
-      noindex: !regionName || categoryCards.length === 0,
+      noindex: !regionName,
       jsonLd: [
         {
           id: "city-page",
@@ -1538,7 +1568,7 @@ function CityPage() {
       }
       const categories = (await categoriesRes.json()) as Category[];
       const venues = (await venuesRes.json()) as Venue[];
-      const allRegions = [...new Set(venues.map((item) => item.region))];
+      const allRegions = [...new Set([...SEO_CITY_PRIORITY, ...venues.map((item) => item.region)])];
       const resolvedRegion = allRegions.find((item) => regionToSlug(item) === citySlug) ?? "";
       setRegionName(resolvedRegion);
       if (!resolvedRegion) {
@@ -1556,7 +1586,6 @@ function CityPage() {
             count,
           };
         })
-        .filter((item) => item.count > 0)
         .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name, "ru-RU"));
       setCategoryCards(cards);
     } catch {
@@ -1575,17 +1604,25 @@ function CityPage() {
       {loading ? <p className="muted">Загрузка...</p> : null}
       {!loading && error ? <p className="error-note">{error}</p> : null}
       {!loading && !error ? (
-        <div className="category-grid">
-          {categoryCards.map((item) => (
-            <Link key={item.id} className="category-tile" to={`/category/${categoryToSlug(item.name)}/${regionToSlug(regionName)}`}>
-              <div className="category-tile-placeholder">скоро появится фото</div>
-              <div className="category-tile-body">
-                <h3>{item.name}</h3>
-                <p>{item.count} площадок</p>
-              </div>
-            </Link>
-          ))}
-        </div>
+        <>
+          {categoryCards.length === 0 ? (
+            <div className="empty-state">
+              <h3>В этом городе площадки скоро появятся</h3>
+              <p>Мы уже открыли SEO-посадочную страницу для города и готовим первые карточки площадок.</p>
+            </div>
+          ) : null}
+          <div className="category-grid">
+            {categoryCards.map((item) => (
+              <Link key={item.id} className="category-tile" to={`/category/${categoryToSlug(item.name)}/${regionToSlug(regionName)}`}>
+                <div className="category-tile-placeholder">скоро появится фото</div>
+                <div className="category-tile-body">
+                  <h3>{item.name}</h3>
+                  <p>{item.count} площадок</p>
+                </div>
+              </Link>
+            ))}
+          </div>
+        </>
       ) : null}
     </section>
   );
@@ -1681,7 +1718,7 @@ function CategoryPage() {
       }
 
       const resolvedRegion = citySlug
-        ? [...new Set(universeData.map((item) => item.region))].find((item) => regionToSlug(item) === citySlug) ?? ""
+        ? [...new Set([...SEO_CITY_PRIORITY, ...universeData.map((item) => item.region)])].find((item) => regionToSlug(item) === citySlug) ?? ""
         : "";
       setLockedRegion(resolvedRegion);
       if (citySlug) setRegion(resolvedRegion);
@@ -2470,7 +2507,7 @@ function OwnerPage() {
 
       {!owner ? (
         <form className="owner-auth" onSubmit={auth}>
-          <p className="ok">Для новых арендодателей действует 3 месяца бесплатного доступа.</p>
+          <p className="ok">Для новых арендодателей действует 6 месяцев бесплатного доступа.</p>
           <div className="tabs">
             <button type="button" className={mode === "login" ? "tab active" : "tab"} onClick={() => setMode("login")}>Вход</button>
             <button type="button" className={mode === "register" ? "tab active" : "tab"} onClick={() => setMode("register")}>Регистрация</button>
@@ -2507,7 +2544,7 @@ function OwnerPage() {
 
           <div className="owner-status">
             <p><strong>{owner.name}</strong> ({owner.email})</p>
-            <p>Статус запуска: 3 месяца бесплатно для новых арендодателей</p>
+            <p>Статус запуска: 6 месяцев бесплатно для новых арендодателей</p>
             <p>Пробный доступ до: {owner.trialEndsAt}</p>
             <p>{ownerDashboard?.trial ? `Осталось дней: ${ownerDashboard.trial.daysLeft}` : owner.trialStatus === "active" ? "Пробный доступ активен" : "Пробный доступ завершен"}</p>
             {nextAction ? <p className="next-action">{nextAction}</p> : null}

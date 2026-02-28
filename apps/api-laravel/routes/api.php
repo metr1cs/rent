@@ -434,7 +434,7 @@ Route::post('/owner/register', function (Request $request) {
         'name' => $data['name'],
         'email' => $data['email'],
         'password_hash' => Hash::make($data['password']),
-        'trial_ends_at' => now()->addDays(90)->toDateString(),
+        'trial_ends_at' => now()->addDays(180)->toDateString(),
         'trial_status' => 'active',
         'subscription_status' => 'inactive',
         'subscription_plan' => 'monthly_2000',

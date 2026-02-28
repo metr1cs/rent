@@ -16,6 +16,15 @@ Main risks now:
 - Limited unique long-form content per category/city intent.
 - No dedicated editorial landing pages (guides/comparisons/checklists).
 
+## 1.1) Priority Geo Focus
+First-priority rollout is shifted to major-city coverage.
+Priority cluster: Moscow, Saint Petersburg, Novosibirsk, Yekaterinburg, Kazan, Nizhny Novgorod, Chelyabinsk, Samara, Omsk, Rostov-on-Don, Ufa, Krasnoyarsk, Voronezh, Perm, Volgograd, Krasnodar, Saratov, Tyumen, Tolyatti, Izhevsk, Barnaul, Ulyanovsk, Irkutsk, Vladivostok, Sochi, Kaliningrad.
+
+Execution rule:
+- Every priority city must have indexable city landing pages.
+- Every priority city must have category + city URLs in sitemap.
+- Empty geo pages must stay indexable only if they contain unique city intent copy and clear next-step UX.
+
 ## 2) Promotion Strategy (90 days)
 ### Phase A (Weeks 1-2) - Technical indexation
 - Verify indexing in Yandex Webmaster + Google Search Console.
@@ -71,7 +80,7 @@ Aggressive (90 days):
 - Organic leads: +80% to +130%
 
 ## 5) Priority Backlog
-1. Add SEO landing templates for "category + city" (programmatic pages with strict quality guardrails).
+1. Expand and harden SEO landing templates for priority "category + city" cities first (programmatic pages with strict quality guardrails).
 2. Add content module on category pages: checklist, budget ranges, pitfalls.
 3. Add structured data extensions where relevant (FAQ/ItemList consistency).
 4. Enable dashboard with weekly SEO + funnel review.
