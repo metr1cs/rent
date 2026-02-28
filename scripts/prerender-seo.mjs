@@ -20,6 +20,26 @@ function decodeSlug(value) {
   }
 }
 
+function decodeSegmentForFs(value) {
+  const protectedValue = value.replace(/%2F/gi, '__SLASH__');
+  try {
+    return decodeURIComponent(protectedValue).replace(/__SLASH__/g, '%2F');
+  } catch {
+    return value;
+  }
+}
+
+function toFsRelativePaths(route) {
+  if (route === '/') return [''];
+  const encoded = route.replace(/^\//, '');
+  const decoded = route
+    .split('/')
+    .filter(Boolean)
+    .map((segment) => decodeSegmentForFs(segment))
+    .join('/');
+  return [...new Set([encoded, decoded].filter(Boolean))];
+}
+
 function normalizePhrase(value) {
   const decoded = decodeSlug(value).replace(/-/g, ' ').replace(/\s*\/\s*/g, ' / ').replace(/\s+/g, ' ').trim();
   if (!decoded) return '';
@@ -179,10 +199,16 @@ function applyMeta(html, route) {
 
 for (const route of routes) {
   const html = applyMeta(baseHtml, route);
-  const targetDir = route === '/' ? distDir : path.join(distDir, route.replace(/^\//, ''));
-  await fs.mkdir(targetDir, { recursive: true });
-  const targetPath = route === '/' ? path.join(distDir, 'index.html') : path.join(targetDir, 'index.html');
-  await fs.writeFile(targetPath, html, 'utf8');
+  const relativePaths = toFsRelativePaths(route);
+  if (route === '/') {
+    await fs.writeFile(path.join(distDir, 'index.html'), html, 'utf8');
+    continue;
+  }
+  for (const relativePath of relativePaths) {
+    const targetDir = path.join(distDir, relativePath);
+    await fs.mkdir(targetDir, { recursive: true });
+    await fs.writeFile(path.join(targetDir, 'index.html'), html, 'utf8');
+  }
 }
 
 console.log(`Prerendered SEO routes: ${routes.length}`);
